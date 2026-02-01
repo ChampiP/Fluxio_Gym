@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Client, Membership, AttendanceLog, AppSettings, Transaction, Product, Measurement } from '../types';
+import { Client, Membership, AttendanceLog, AppSettings, Transaction, Product, Measurement, InstallmentPlan, InstallmentPayment } from '../types';
 
 // Helper para generar IDs humanos (1001, 1002, etc.)
 const generateHumanId = async (): Promise<string> => {
@@ -328,6 +328,7 @@ export const api = {
                 phone: client.phone,
                 dni: client.dni,
                 email: client.email,
+                address: client.address,
                 active_membership_id: client.activeMembershipId,
                 membership_start_date: client.membershipStartDate,
                 membership_expiry_date: client.membershipExpiryDate,
@@ -580,5 +581,200 @@ export const api = {
         } else {
             console.log('✅ All clients have humanId assigned');
         }
+    },
+
+    // ============ SISTEMA DE CUOTAS ============
+    
+    // Crear plan de cuotas
+    async createInstallmentPlan(data: {
+        clientId: string;
+        membershipId: string;
+        totalAmount: number;
+        installmentCount: number;
+        interestRate: number;
+    }): Promise<InstallmentPlan> {
+        await delay();
+        
+        const installmentAmount = Math.round((data.totalAmount * (1 + data.interestRate) / data.installmentCount) * 100) / 100;
+        
+        const { data: plan, error } = await supabase
+            .from('installment_plans')
+            .insert({
+                client_id: data.clientId,
+                membership_id: data.membershipId,
+                total_amount: data.totalAmount * (1 + data.interestRate),
+                installment_count: data.installmentCount,
+                installment_amount: installmentAmount,
+                interest_rate: data.interestRate
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Crear los pagos individuales
+        const payments = [];
+        const startDate = new Date();
+        
+        for (let i = 1; i <= data.installmentCount; i++) {
+            const dueDate = new Date(startDate);
+            dueDate.setMonth(dueDate.getMonth() + i);
+            
+            payments.push({
+                plan_id: plan.id,
+                installment_number: i,
+                amount: installmentAmount,
+                due_date: dueDate.toISOString().split('T')[0]
+            });
+        }
+
+        const { error: paymentsError } = await supabase
+            .from('installment_payments')
+            .insert(payments);
+
+        if (paymentsError) throw paymentsError;
+
+        return {
+            id: plan.id,
+            clientId: plan.client_id,
+            membershipId: plan.membership_id,
+            totalAmount: plan.total_amount,
+            installmentCount: plan.installment_count,
+            installmentAmount: plan.installment_amount,
+            interestRate: plan.interest_rate,
+            startDate: plan.start_date,
+            status: plan.status,
+            createdAt: plan.created_at
+        };
+    },
+
+    // Obtener planes de cuotas de un cliente
+    async getClientInstallmentPlans(clientId: string): Promise<InstallmentPlan[]> {
+        await delay();
+        
+        const { data, error } = await supabase
+            .from('installment_plans')
+            .select('*')
+            .eq('client_id', clientId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        return data.map(p => ({
+            id: p.id,
+            clientId: p.client_id,
+            membershipId: p.membership_id,
+            totalAmount: p.total_amount,
+            installmentCount: p.installment_count,
+            installmentAmount: p.installment_amount,
+            interestRate: p.interest_rate,
+            startDate: p.start_date,
+            status: p.status,
+            createdAt: p.created_at
+        }));
+    },
+
+    // Obtener pagos de un plan de cuotas
+    async getInstallmentPayments(planId: string): Promise<InstallmentPayment[]> {
+        await delay();
+        
+        const { data, error } = await supabase
+            .from('installment_payments')
+            .select('*')
+            .eq('plan_id', planId)
+            .order('installment_number', { ascending: true });
+
+        if (error) throw error;
+
+        return data.map(p => ({
+            id: p.id,
+            planId: p.plan_id,
+            installmentNumber: p.installment_number,
+            amount: p.amount,
+            dueDate: p.due_date,
+            paidDate: p.paid_date,
+            paymentMethod: p.payment_method,
+            status: p.status,
+            notes: p.notes,
+            createdAt: p.created_at
+        }));
+    },
+
+    // Marcar pago como pagado
+    async markInstallmentAsPaid(paymentId: string, paymentMethod: 'cash' | 'card' | 'transfer' | 'yape' | 'plin', notes?: string): Promise<void> {
+        await delay();
+        
+        const { error } = await supabase
+            .from('installment_payments')
+            .update({
+                status: 'paid',
+                paid_date: new Date().toISOString(),
+                payment_method: paymentMethod,
+                notes: notes
+            })
+            .eq('id', paymentId);
+
+        if (error) throw error;
+
+        // Verificar si el plan está completado
+        const { data: payment } = await supabase
+            .from('installment_payments')
+            .select('plan_id')
+            .eq('id', paymentId)
+            .single();
+
+        if (payment) {
+            const { data: pendingPayments } = await supabase
+                .from('installment_payments')
+                .select('id')
+                .eq('plan_id', payment.plan_id)
+                .eq('status', 'pending');
+
+            if (!pendingPayments || pendingPayments.length === 0) {
+                // Marcar plan como completado
+                await supabase
+                    .from('installment_plans')
+                    .update({ status: 'completed' })
+                    .eq('id', payment.plan_id);
+            }
+        }
+    },
+
+    // Obtener pagos vencidos
+    async getOverduePayments(): Promise<InstallmentPayment[]> {
+        await delay();
+        
+        const today = new Date().toISOString().split('T')[0];
+        
+        const { data, error } = await supabase
+            .from('installment_payments')
+            .select(`
+                *,
+                installment_plans!inner(
+                    client_id,
+                    clients!inner(
+                        first_name,
+                        last_name,
+                        phone
+                    )
+                )
+            `)
+            .eq('status', 'pending')
+            .lt('due_date', today);
+
+        if (error) throw error;
+
+        return data.map(p => ({
+            id: p.id,
+            planId: p.plan_id,
+            installmentNumber: p.installment_number,
+            amount: p.amount,
+            dueDate: p.due_date,
+            paidDate: p.paid_date,
+            paymentMethod: p.payment_method,
+            status: 'overdue' as const,
+            notes: p.notes,
+            createdAt: p.created_at
+        }));
     }
 };

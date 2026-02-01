@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Client, Membership, Transaction, AppSettings } from '../types';
-import { Plus, Search, Filter, MoreHorizontal, User, Calendar, X, MessageCircle, FileText, Download, Activity, Ruler, CreditCard, ChevronRight } from 'lucide-react';
+import { Plus, Search, Filter, MoreHorizontal, User, Calendar, X, MessageCircle, FileText, Download, Activity, Ruler, CreditCard, ChevronRight, Edit, Check } from 'lucide-react';
 import { api } from '../services/api-supabase';
 import { generateInvoice } from '../services/invoice';
 import { isValidEmail, isValidDNI, isValidPhone, sanitizeInput, rateLimiter } from '../utils/security';
@@ -29,7 +29,13 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
   });
 
   // Client Details Tab State
-  const [activeTab, setActiveTab] = useState<'info' | 'history' | 'measurements' | 'card'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'history' | 'measurements' | 'card' | 'installments'>('info');
+
+  // Edit Mode State
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    firstName: '', lastName: '', phone: '', email: '', address: ''
+  });
 
   // Measurements Form State
   const [measurementForm, setMeasurementForm] = useState({
@@ -40,12 +46,31 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
   const [clientHistory, setClientHistory] = useState<Transaction[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
 
+  // Installment State
+  const [clientInstallmentPlans, setClientInstallmentPlans] = useState<any[]>([]);
+  const [installmentPayments, setInstallmentPayments] = useState<any[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
+  const [expandedMembershipId, setExpandedMembershipId] = useState<string | null>(null);
+  
+  // Manual installment configuration
+  const [installmentConfig, setInstallmentConfig] = useState({
+    installments: 2,
+    interestRate: 0,
+    isEnabled: false
+  });
+
   useEffect(() => {
     api.getSettings().then(setSettings);
   }, []);
 
   useEffect(() => {
     if (selectedClient) {
+      // Reset edit mode when selecting new client
+      setIsEditMode(false);
+      setEditFormData({
+        firstName: '', lastName: '', phone: '', email: '', address: ''
+      });
+      
       // Reset tab when opening new client
       if (activeTab === 'card' || activeTab === 'measurements') {
         // Keep tab if it makes sense, or reset. Let's keep it if browsing.
@@ -55,8 +80,19 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
         const history = txs.filter(t => t.clientId === selectedClient.id);
         setClientHistory(history);
       });
+
+      // Cargar planes de cuotas del cliente
+      api.getClientInstallmentPlans(selectedClient.id).then(plans => {
+        setClientInstallmentPlans(plans);
+      }).catch(err => {
+        console.error('Error loading installment plans:', err);
+        setClientInstallmentPlans([]);
+      });
     } else {
       setClientHistory([]);
+      setClientInstallmentPlans([]);
+      setInstallmentPayments([]);
+      setSelectedPlan(null);
       setActiveTab('info');
     }
   }, [selectedClient]);
@@ -119,7 +155,22 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
       });
 
       if (formData.initialMembershipId) {
-        await onRenewMembership(newClient.id, formData.initialMembershipId);
+        const membership = memberships.find(m => m.id === formData.initialMembershipId);
+        
+        if (installmentConfig.isEnabled && installmentConfig.installments > 1 && membership) {
+          // Crear plan de cuotas para la membresía inicial
+          const interestRate = installmentConfig.interestRate / 100;
+          await api.createInstallmentPlan({
+            clientId: newClient.id,
+            membershipId: formData.initialMembershipId,
+            totalAmount: membership.cost,
+            installmentCount: installmentConfig.installments,
+            interestRate: interestRate
+          });
+        } else {
+          // Asignar membresía completa tradicional
+          await onRenewMembership(newClient.id, formData.initialMembershipId);
+        }
       }
 
       // Recargar datos para actualizar la lista
@@ -127,6 +178,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
 
       setIsModalOpen(false);
       setFormData({ firstName: '', lastName: '', dni: '', email: '', phone: '', address: '', initialMembershipId: '' });
+      setInstallmentConfig({ installments: 2, interestRate: 0, isEnabled: false });
       alert('✅ Cliente registrado exitosamente');
     } catch (error) {
       console.error('Error creating client:', error);
@@ -159,28 +211,128 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
     }
   };
 
+  const handleEdit = () => {
+    if (selectedClient) {
+      setEditFormData({
+        firstName: selectedClient.firstName,
+        lastName: selectedClient.lastName,
+        phone: selectedClient.phone,
+        email: selectedClient.email || '',
+        address: selectedClient.address || ''
+      });
+      setIsEditMode(true);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditMode(false);
+    setEditFormData({
+      firstName: '', lastName: '', phone: '', email: '', address: ''
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedClient) return;
+
+    // Validaciones básicas
+    if (!editFormData.firstName.trim() || !editFormData.lastName.trim()) {
+      alert('Nombre y apellido son obligatorios');
+      return;
+    }
+
+    if (!editFormData.phone.trim()) {
+      alert('El teléfono es obligatorio');
+      return;
+    }
+
+    try {
+      const updatedClient: Client = {
+        ...selectedClient,
+        firstName: editFormData.firstName.trim(),
+        lastName: editFormData.lastName.trim(),
+        phone: editFormData.phone.trim(),
+        email: editFormData.email.trim(),
+        address: editFormData.address.trim()
+      };
+
+      await api.updateClient(updatedClient);
+      
+      // Actualizar el cliente seleccionado
+      setSelectedClient(updatedClient);
+      
+      // Recargar la lista de clientes
+      onCreateClient(updatedClient);
+      
+      setIsEditMode(false);
+      alert('✅ Datos del cliente actualizados exitosamente');
+    } catch (error) {
+      console.error('Error updating client:', error);
+      alert('❌ Error al actualizar los datos del cliente');
+    }
+  };
+
   const handleRenew = async (planId: string) => {
     if (selectedClient && !renewingPlanId) {
-      if (!window.confirm('¿Estás seguro de renovar este plan? Se generará un cobro y un registro.')) {
+      const membership = memberships.find(m => m.id === planId);
+      if (!membership) return;
+
+      let confirmMessage = '';
+      let paymentType = 'full';
+
+      if (installmentConfig.isEnabled && installmentConfig.installments > 1) {
+        const interestRate = installmentConfig.interestRate / 100; // Convert percentage to decimal
+        const totalWithInterest = membership.cost * (1 + interestRate);
+        const monthlyAmount = Math.round((totalWithInterest / installmentConfig.installments) * 100) / 100;
+        
+        confirmMessage = `¿Confirmas crear plan de ${installmentConfig.installments} cuotas de S/.${monthlyAmount} c/u?\nTotal: S/.${totalWithInterest.toFixed(2)} (${installmentConfig.interestRate}% interés)`;
+        paymentType = 'installments';
+      } else {
+        confirmMessage = `¿Confirmas el pago completo de S/.${membership.cost}?`;
+      }
+
+      if (!window.confirm(confirmMessage)) {
         return;
       }
 
       setRenewingPlanId(planId);
       try {
-        await onRenewMembership(selectedClient.id, planId);
+        if (paymentType === 'installments') {
+          // Crear plan de cuotas con configuración manual
+          const interestRate = installmentConfig.interestRate / 100;
+          await api.createInstallmentPlan({
+            clientId: selectedClient.id,
+            membershipId: planId,
+            totalAmount: membership.cost,
+            installmentCount: installmentConfig.installments,
+            interestRate: interestRate
+          });
+          
+          // Recargar planes de cuotas
+          const updatedPlans = await api.getClientInstallmentPlans(selectedClient.id);
+          setClientInstallmentPlans(updatedPlans);
+          
+          alert('✅ Plan de cuotas creado exitosamente');
+        } else {
+          // Pago completo tradicional
+          await onRenewMembership(selectedClient.id, planId);
+          alert('✅ Membresía asignada con éxito');
+        }
+
         const txs = await api.getTransactions();
         setClientHistory(txs.filter(t => t.clientId === selectedClient.id));
-        alert('Membresía renovada con éxito.');
 
-        // Refresh selected client data from global list (passed as prop, might need manual refresh or callback if not auto-updating)
-        // Ideally App.tsx updates clients, and this component re-renders. 
-        // For immediate feedback in modal, we might need to refetch specific client or wait for prop update.
+        // Refresh selected client data
         const allClients = await api.getClients();
         const updated = allClients.find(c => c.id === selectedClient.id);
         if (updated) setSelectedClient(updated);
 
+        // Reset configuration
+        setExpandedMembershipId(null);
+        setInstallmentConfig({ installments: 2, interestRate: 0, isEnabled: false });
+
       } catch (error) {
-        alert('Error al renovar membresía.');
+        console.error('Error processing payment:', error);
+        alert('❌ Error al procesar el pago');
       } finally {
         setRenewingPlanId(null);
       }
@@ -432,10 +584,85 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                     <option key={m.id} value={m.id}>{m.name} - S/. {m.cost}</option>
                   ))}
                 </select>
+
+                {/* Configuración de cuotas para nuevo cliente */}
+                {formData.initialMembershipId && (
+                  <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        💳 Pago en cuotas
+                      </label>
+                      <input
+                        type="checkbox"
+                        checked={installmentConfig.isEnabled}
+                        onChange={(e) => setInstallmentConfig(prev => ({ ...prev, isEnabled: e.target.checked }))}
+                        className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {installmentConfig.isEnabled && (
+                      <>
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <div>
+                            <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Cuotas</label>
+                            <select
+                              value={installmentConfig.installments}
+                              onChange={(e) => setInstallmentConfig(prev => ({ ...prev, installments: parseInt(e.target.value) }))}
+                              className="w-full px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                            >
+                              <option value={2}>2 cuotas</option>
+                              <option value={3}>3 cuotas</option>
+                              <option value={4}>4 cuotas</option>
+                              <option value={6}>6 cuotas</option>
+                              <option value={12}>12 cuotas</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Interés (%)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="50"
+                              step="0.5"
+                              value={installmentConfig.interestRate}
+                              onChange={(e) => setInstallmentConfig(prev => ({ ...prev, interestRate: parseFloat(e.target.value) || 0 }))}
+                              className="w-full px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
+                        
+                        {/* Preview */}
+                        <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs text-slate-600 dark:text-slate-400 border border-blue-200 dark:border-blue-800">
+                          <strong>Preview:</strong> 
+                          {(() => {
+                            const membership = memberships.find(m => m.id === formData.initialMembershipId);
+                            if (membership) {
+                              const interestRate = installmentConfig.interestRate / 100;
+                              const total = membership.cost * (1 + interestRate);
+                              const monthly = (total / installmentConfig.installments).toFixed(2);
+                              return ` ${installmentConfig.installments} cuotas de S/.${monthly} = Total S/.${total.toFixed(2)}`;
+                            }
+                            return '';
+                          })()}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end space-x-3 mt-6">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-medium">Cancelar</button>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setInstallmentConfig({ installments: 2, interestRate: 0, isEnabled: false });
+                  }} 
+                  className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-medium"
+                >
+                  Cancelar
+                </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -495,6 +722,12 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                 >
                   <CreditCard size={16} /> Credencial
                 </button>
+                <button
+                  onClick={() => setActiveTab('installments')}
+                  className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center gap-1 ${activeTab === 'installments' ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                >
+                  <Calendar size={16} /> Cuotas
+                </button>
               </div>
             </div>
 
@@ -505,21 +738,99 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div>
                     <div className="mb-6">
-                      <h3 className="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Información Personal</h3>
-                      <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
-                        <div>
-                          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Teléfono</p>
-                          <p className="text-slate-900 dark:text-white font-medium">{selectedClient.phone || '-'}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Email</p>
-                          <p className="text-slate-900 dark:text-white font-medium break-all">{selectedClient.email || '-'}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Dirección</p>
-                          <p className="text-slate-900 dark:text-white font-medium">{selectedClient.address || '-'}</p>
-                        </div>
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Información Personal</h3>
+                        {!isEditMode ? (
+                          <button 
+                            onClick={handleEdit}
+                            className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium flex items-center gap-1"
+                          >
+                            <Edit size={14} /> Editar
+                          </button>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={handleCancelEdit}
+                              className="text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300 text-sm font-medium"
+                            >
+                              Cancelar
+                            </button>
+                            <button 
+                              onClick={handleSaveEdit}
+                              className="text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 text-sm font-medium flex items-center gap-1"
+                            >
+                              <Check size={14} /> Guardar
+                            </button>
+                          </div>
+                        )}
                       </div>
+                      
+                      {!isEditMode ? (
+                        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
+                          <div>
+                            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Teléfono</p>
+                            <p className="text-slate-900 dark:text-white font-medium">{selectedClient.phone || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Email</p>
+                            <p className="text-slate-900 dark:text-white font-medium break-all">{selectedClient.email || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Dirección</p>
+                            <p className="text-slate-900 dark:text-white font-medium">{selectedClient.address || '-'}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-4">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Nombre</label>
+                              <input
+                                type="text"
+                                value={editFormData.firstName}
+                                onChange={(e) => setEditFormData({...editFormData, firstName: e.target.value})}
+                                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Apellido</label>
+                              <input
+                                type="text"
+                                value={editFormData.lastName}
+                                onChange={(e) => setEditFormData({...editFormData, lastName: e.target.value})}
+                                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Teléfono</label>
+                            <input
+                              type="text"
+                              value={editFormData.phone}
+                              onChange={(e) => setEditFormData({...editFormData, phone: e.target.value})}
+                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Email</label>
+                            <input
+                              type="email"
+                              value={editFormData.email}
+                              onChange={(e) => setEditFormData({...editFormData, email: e.target.value})}
+                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Dirección</label>
+                            <input
+                              type="text"
+                              value={editFormData.address}
+                              onChange={(e) => setEditFormData({...editFormData, address: e.target.value})}
+                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="mb-6">
@@ -549,23 +860,123 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                     </div>
 
                     <h3 className="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Renovar / Asignar Plan</h3>
-                    <div className="grid gap-3">
-                      {memberships.map(plan => (
-                        <button
-                          key={plan.id}
-                          disabled={!!renewingPlanId}
-                          onClick={() => handleRenew(plan.id)}
-                          className={`flex items-center justify-between p-3 border-2 rounded-lg transition-all group ${renewingPlanId === plan.id ? 'bg-blue-50 border-blue-500 opacity-70' : 'border-slate-100 dark:border-slate-700 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-slate-700'}`}
-                        >
-                          <div className="text-left">
-                            <p className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-blue-700 dark:group-hover:text-blue-400">{plan.name}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{plan.durationDays} días</p>
+                    
+                    {/* Configuración de cuotas */}
+                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 mb-4 border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="font-medium text-slate-700 dark:text-slate-300">
+                          💳 Pago en cuotas
+                        </label>
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={installmentConfig.isEnabled}
+                            onChange={(e) => setInstallmentConfig(prev => ({ ...prev, isEnabled: e.target.checked }))}
+                            className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {installmentConfig.isEnabled && (
+                        <div className="grid grid-cols-2 gap-3 mt-3">
+                          <div>
+                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
+                              Número de cuotas
+                            </label>
+                            <select
+                              value={installmentConfig.installments}
+                              onChange={(e) => setInstallmentConfig(prev => ({ ...prev, installments: parseInt(e.target.value) }))}
+                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                            >
+                              <option value={2}>2 cuotas</option>
+                              <option value={3}>3 cuotas</option>
+                              <option value={4}>4 cuotas</option>
+                              <option value={6}>6 cuotas</option>
+                              <option value={12}>12 cuotas</option>
+                            </select>
                           </div>
-                          <span className="font-bold text-slate-900 dark:text-white text-lg">
-                            {renewingPlanId === plan.id ? '...' : `S/. ${plan.cost}`}
-                          </span>
-                        </button>
-                      ))}
+                          <div>
+                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
+                              Interés (%)
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="50"
+                              step="0.5"
+                              value={installmentConfig.interestRate}
+                              onChange={(e) => setInstallmentConfig(prev => ({ ...prev, interestRate: parseFloat(e.target.value) || 0 }))}
+                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid gap-3">
+                      {memberships.map(plan => {
+                        // Calcular preview de cuotas si están habilitadas
+                        let installmentPreview = null;
+                        if (installmentConfig.isEnabled && installmentConfig.installments > 1) {
+                          const interestRate = installmentConfig.interestRate / 100;
+                          const totalWithInterest = plan.cost * (1 + interestRate);
+                          const monthlyAmount = Math.round((totalWithInterest / installmentConfig.installments) * 100) / 100;
+                          installmentPreview = {
+                            monthly: monthlyAmount,
+                            total: totalWithInterest.toFixed(2)
+                          };
+                        }
+                        
+                        return (
+                          <div key={plan.id} className="border border-slate-200 dark:border-slate-700 rounded-lg">
+                            <div className={`p-3 rounded-lg transition-all ${
+                              renewingPlanId === plan.id ? 'bg-blue-50 border-blue-500 opacity-70' : 
+                              'hover:bg-slate-50 dark:hover:bg-slate-700'
+                            }`}>
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex-1">
+                                  <p className="font-bold text-slate-800 dark:text-slate-200">{plan.name}</p>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                                    {plan.durationDays} días
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-bold text-slate-900 dark:text-white text-lg">
+                                    S/. {plan.cost}
+                                  </p>
+                                  {installmentPreview && (
+                                    <p className="text-sm text-blue-600 dark:text-blue-400">
+                                      {installmentConfig.installments}x S/.{installmentPreview.monthly}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {installmentPreview && (
+                                <div className="text-xs text-slate-500 dark:text-slate-400 mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border">
+                                  <strong>Vista previa:</strong> {installmentConfig.installments} cuotas de S/.{installmentPreview.monthly} = Total S/.{installmentPreview.total}
+                                  {installmentConfig.interestRate > 0 && (
+                                    <span className="ml-2 text-orange-600 dark:text-orange-400">
+                                      ({installmentConfig.interestRate}% interés)
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                              <button
+                                onClick={() => handleRenew(plan.id)}
+                                disabled={!!renewingPlanId}
+                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold py-2 px-4 rounded transition-colors"
+                              >
+                                {renewingPlanId === plan.id ? '⏳ Procesando...' : 
+                                 installmentConfig.isEnabled ? `📅 Asignar con ${installmentConfig.installments} cuotas` : 
+                                 '💰 Asignar pago completo'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -741,6 +1152,166 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                       <Download size={18} /> Descargar Imagen
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* --- TAB: CUOTAS --- */}
+              {activeTab === 'installments' && (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-white">Planes de Cuotas</h3>
+                  </div>
+
+                  {clientInstallmentPlans.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Calendar size={48} className="mx-auto text-slate-300 dark:text-slate-600 mb-4" />
+                      <p className="text-slate-500 dark:text-slate-400 font-medium">
+                        No hay planes de cuotas activos
+                      </p>
+                      <p className="text-slate-400 dark:text-slate-500 text-sm mt-2">
+                        Los planes de cuotas aparecerán aquí cuando el cliente adquiera una membresía con pago fraccionado
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-4">
+                      {clientInstallmentPlans.map((plan: any) => (
+                        <div key={plan.id} className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h4 className="font-bold text-slate-900 dark:text-white">
+                                {memberships.find(m => m.id === plan.membershipId)?.name || 'Plan Desconocido'}
+                              </h4>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                {plan.installmentCount} cuotas de S/. {plan.installmentAmount}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <div className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${
+                                plan.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                                plan.status === 'active' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
+                                plan.status === 'overdue' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                                'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-300'
+                              }`}>
+                                {plan.status === 'completed' ? 'COMPLETADO' :
+                                 plan.status === 'active' ? 'ACTIVO' :
+                                 plan.status === 'overdue' ? 'VENCIDO' : plan.status.toUpperCase()}
+                              </div>
+                              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                                Total: S/. {plan.totalAmount}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="text-xs text-slate-400 dark:text-slate-500">
+                            Creado: {new Date(plan.createdAt).toLocaleDateString()} • 
+                            Interés: {(plan.interestRate * 100).toFixed(1)}%
+                          </div>
+                          
+                          <button
+                            onClick={async () => {
+                              setSelectedPlan(plan);
+                              try {
+                                const payments = await api.getInstallmentPayments(plan.id);
+                                setInstallmentPayments(payments);
+                              } catch (error) {
+                                console.error('Error loading payments:', error);
+                                setInstallmentPayments([]);
+                              }
+                            }}
+                            className="mt-3 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium"
+                          >
+                            Ver pagos →
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Panel de pagos del plan seleccionado */}
+                  {selectedPlan && (
+                    <div className="mt-8 bg-white dark:bg-slate-800 rounded-lg p-6 border border-slate-200 dark:border-slate-700">
+                      <div className="flex justify-between items-center mb-4">
+                        <h4 className="font-bold text-slate-900 dark:text-white">
+                          Pagos del Plan - {memberships.find(m => m.id === selectedPlan.membershipId)?.name}
+                        </h4>
+                        <button
+                          onClick={() => {
+                            setSelectedPlan(null);
+                            setInstallmentPayments([]);
+                          }}
+                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                        >
+                          <X size={20} />
+                        </button>
+                      </div>
+
+                      <div className="grid gap-3">
+                        {installmentPayments.map((payment: any) => (
+                          <div key={payment.id} className={`flex justify-between items-center p-3 rounded-lg border-l-4 ${
+                            payment.status === 'paid' ? 'bg-green-50 dark:bg-green-900/20 border-green-500' :
+                            payment.status === 'overdue' ? 'bg-red-50 dark:bg-red-900/20 border-red-500' :
+                            'bg-slate-50 dark:bg-slate-900/30 border-slate-300 dark:border-slate-600'
+                          }`}>
+                            <div>
+                              <p className="font-bold text-slate-900 dark:text-white">
+                                Cuota #{payment.installmentNumber}
+                              </p>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                Vence: {new Date(payment.dueDate).toLocaleDateString()}
+                                {payment.paidDate && (
+                                  <span className="ml-2 text-green-600 dark:text-green-400">
+                                    • Pagado: {new Date(payment.paidDate).toLocaleDateString()}
+                                  </span>
+                                )}
+                              </p>
+                              {payment.paymentMethod && (
+                                <p className="text-xs text-slate-400 dark:text-slate-500 capitalize">
+                                  Método: {payment.paymentMethod}
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold text-lg text-slate-900 dark:text-white">
+                                S/. {payment.amount}
+                              </p>
+                              {payment.status === 'pending' && (
+                                <button
+                                  onClick={async () => {
+                                    const method = prompt('Método de pago (cash/card/transfer/yape/plin):', 'cash');
+                                    if (method && ['cash', 'card', 'transfer', 'yape', 'plin'].includes(method)) {
+                                      try {
+                                        await api.markInstallmentAsPaid(payment.id, method as any);
+                                        // Recargar pagos
+                                        const updatedPayments = await api.getInstallmentPayments(selectedPlan.id);
+                                        setInstallmentPayments(updatedPayments);
+                                        alert('✅ Pago registrado exitosamente');
+                                      } catch (error) {
+                                        console.error('Error marking payment:', error);
+                                        alert('❌ Error al registrar el pago');
+                                      }
+                                    }
+                                  }}
+                                  className="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded font-medium mt-1"
+                                >
+                                  Marcar Pagado
+                                </button>
+                              )}
+                              {payment.status === 'paid' && (
+                                <span className="text-green-600 dark:text-green-400 text-sm font-medium">
+                                  ✓ Pagado
+                                </span>
+                              )}
+                              {payment.status === 'overdue' && (
+                                <span className="text-red-600 dark:text-red-400 text-sm font-medium">
+                                  ⚠ Vencido
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

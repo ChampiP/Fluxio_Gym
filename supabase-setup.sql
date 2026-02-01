@@ -10,6 +10,8 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP FUNCTION IF EXISTS handle_new_user();
 
 -- 1.2 Eliminar tablas
+DROP TABLE IF EXISTS installment_payments CASCADE;
+DROP TABLE IF EXISTS installment_plans CASCADE;
 DROP TABLE IF EXISTS attendance_logs CASCADE;
 DROP TABLE IF EXISTS transactions CASCADE;
 DROP TABLE IF EXISTS measurements CASCADE;
@@ -126,6 +128,34 @@ CREATE TABLE admin_users (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 2.9 Tabla de Planes de Cuotas
+CREATE TABLE installment_plans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  membership_id UUID REFERENCES memberships(id),
+  total_amount NUMERIC NOT NULL,
+  installment_count INTEGER NOT NULL,
+  installment_amount NUMERIC NOT NULL,
+  interest_rate NUMERIC DEFAULT 0,
+  start_date DATE DEFAULT CURRENT_DATE,
+  status TEXT CHECK (status IN ('active', 'completed', 'cancelled', 'overdue')) DEFAULT 'active',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2.10 Tabla de Pagos de Cuotas
+CREATE TABLE installment_payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  plan_id UUID REFERENCES installment_plans(id) ON DELETE CASCADE,
+  installment_number INTEGER NOT NULL,
+  amount NUMERIC NOT NULL,
+  due_date DATE NOT NULL,
+  paid_date TIMESTAMPTZ NULL,
+  payment_method TEXT CHECK (payment_method IN ('cash', 'card', 'transfer', 'yape', 'plin')),
+  status TEXT CHECK (status IN ('pending', 'paid', 'overdue')) DEFAULT 'pending',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 3. INSERTAR DATOS INICIALES
 
 -- 3.1 Configuración por defecto
@@ -136,7 +166,8 @@ VALUES ('GymFlex Pro', '#3b82f6', false, 'INVERSIONES FITNESS S.A.C.', '20555555
 INSERT INTO memberships (name, description, cost, duration_days) VALUES
 ('Plan Básico', 'Acceso a gimnasio y máquinas', 80, 30),
 ('Plan Premium', 'Acceso completo + clases grupales', 120, 30),
-('Plan VIP', 'Acceso total + entrenador personal', 200, 30);
+('Plan VIP', 'Acceso total + entrenador personal', 200, 30),
+('Plan Anual', 'Plan completo por 12 meses con descuento', 1200, 365);
 
 -- 4. CREAR ÍNDICES PARA RENDIMIENTO
 CREATE INDEX idx_clients_human_id ON clients(human_id);
@@ -147,6 +178,11 @@ CREATE INDEX idx_attendance_logs_client_id ON attendance_logs(client_id);
 CREATE INDEX idx_measurements_client_id ON measurements(client_id);
 CREATE INDEX idx_admin_users_user_id ON admin_users(user_id);
 CREATE INDEX idx_admin_users_role ON admin_users(role);
+CREATE INDEX idx_installment_plans_client_id ON installment_plans(client_id);
+CREATE INDEX idx_installment_plans_status ON installment_plans(status);
+CREATE INDEX idx_installment_payments_plan_id ON installment_payments(plan_id);
+CREATE INDEX idx_installment_payments_status ON installment_payments(status);
+CREATE INDEX idx_installment_payments_due_date ON installment_payments(due_date);
 
 -- 5. CONFIGURAR SEGURIDAD (Row Level Security)
 ALTER TABLE memberships ENABLE ROW LEVEL SECURITY;
@@ -157,6 +193,8 @@ ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE attendance_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE installment_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE installment_payments ENABLE ROW LEVEL SECURITY;
 
 -- 5.1 Políticas de acceso (solo usuarios autenticados)
 CREATE POLICY "Enable all for authenticated users" ON memberships FOR ALL USING (auth.role() = 'authenticated');
@@ -168,6 +206,8 @@ CREATE POLICY "Enable all for authenticated users" ON attendance_logs FOR ALL US
 CREATE POLICY "Enable all for authenticated users" ON settings FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "Enable read for own profile" ON admin_users FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Enable update for own profile" ON admin_users FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Enable all for authenticated users" ON installment_plans FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Enable all for authenticated users" ON installment_payments FOR ALL USING (auth.role() = 'authenticated');
 
 -- 6. CONFIGURAR AUTENTICACIÓN POR EMAIL
 -- Esta función se ejecutará automáticamente cuando un usuario se registre
@@ -185,7 +225,3 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
--- =================================================================
--- ✅ INSTALACIÓN COMPLETA FINALIZADA
--- Base de datos GymFlex Pro creada exitosamente
--- =================================================================

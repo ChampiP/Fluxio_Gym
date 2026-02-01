@@ -81,3 +81,38 @@ export interface User {
   username: string;
   role: 'admin' | 'staff';
 }
+
+// Sistema de Cuotas / Pagos Fraccionados
+export interface InstallmentPlan {
+  id: string;
+  clientId: string;
+  membershipId: string;
+  totalAmount: number;
+  installmentCount: number;
+  installmentAmount: number;
+  interestRate: number;
+  startDate: string;
+  status: 'active' | 'completed' | 'cancelled' | 'overdue';
+  createdAt: string;
+}
+
+export interface InstallmentPayment {
+  id: string;
+  planId: string;
+  installmentNumber: number;
+  amount: number;
+  dueDate: string;
+  paidDate?: string;
+  paymentMethod?: 'cash' | 'card' | 'transfer' | 'yape' | 'plin';
+  status: 'pending' | 'paid' | 'overdue';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface PaymentOption {
+  type: 'full' | 'installments';
+  installmentCount?: number;
+  installmentAmount?: number;
+  totalWithInterest?: number;
+  monthlyPayment?: number;
+}
