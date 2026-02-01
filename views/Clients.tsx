@@ -122,6 +122,9 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
         await onRenewMembership(newClient.id, formData.initialMembershipId);
       }
 
+      // Recargar datos para actualizar la lista
+      await onCreateClient(newClient);
+
       setIsModalOpen(false);
       setFormData({ firstName: '', lastName: '', dni: '', email: '', phone: '', address: '', initialMembershipId: '' });
       alert('✅ Cliente registrado exitosamente');

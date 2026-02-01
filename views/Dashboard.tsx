@@ -139,8 +139,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, logs, transaction
              <h3 className="font-bold text-slate-800 dark:text-white">Asistencia Semanal</h3>
           </div>
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-              <BarChart data={attendanceData}>
+            <ResponsiveContainer width="100%" height={256} minWidth={300}>
+              <BarChart data={attendanceData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.3} />
                 <XAxis dataKey="name" tick={{fontSize: 12, fill: '#64748b'}} />
                 <YAxis tick={{fontSize: 12, fill: '#64748b'}} />

@@ -18,11 +18,17 @@
 - Ejecutar: `npm run dev`
 - Abrir navegador en: http://localhost:3000
 
-### 🔐 Credenciales de Acceso
+### 🔐 Crear tu primera cuenta
 ```
-Usuario: admin
-Contraseña: admin
+1. Ejecuta la aplicación
+2. Ve a Supabase Authentication > Users
+3. Haz clic en "Invite a user"
+4. Ingresa tu email 
+5. Revisa tu bandeja de entrada y confirma la cuenta
+6. Inicia sesión con tus credenciales
 ```
+
+**Nota:** Debes crear usuarios desde el panel de Supabase para garantizar la seguridad.
 
 ### 🛑 Detener la Aplicación
 - Cerrar la ventana negra (terminal)

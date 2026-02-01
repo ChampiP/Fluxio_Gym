@@ -548,5 +548,37 @@ export const api = {
             // O podría mostrar un modal para hacerlo inmediatamente
             console.log(`Promoción activada: ${beneficiariesCount} beneficiarios pueden usar esta membresía`);
         }
+    },
+
+    // Fix clients without humanId
+    async fixClientHumanIds(): Promise<void> {
+        console.log('Checking clients without humanId...');
+        
+        const { data: clientsWithoutId, error } = await supabase
+            .from('clients')
+            .select('id, first_name, last_name')
+            .is('human_id', null);
+
+        if (error) throw error;
+
+        if (clientsWithoutId && clientsWithoutId.length > 0) {
+            console.log(`Found ${clientsWithoutId.length} clients without humanId. Fixing...`);
+            
+            for (const client of clientsWithoutId) {
+                const humanId = await generateHumanId();
+                const { error: updateError } = await supabase
+                    .from('clients')
+                    .update({ human_id: humanId })
+                    .eq('id', client.id);
+
+                if (updateError) {
+                    console.error(`Error updating client ${client.first_name} ${client.last_name}:`, updateError);
+                } else {
+                    console.log(`✅ Assigned humanId ${humanId} to ${client.first_name} ${client.last_name}`);
+                }
+            }
+        } else {
+            console.log('✅ All clients have humanId assigned');
+        }
     }
 };

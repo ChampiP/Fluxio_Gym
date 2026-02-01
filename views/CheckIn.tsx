@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AttendanceLog, Client } from '../types';
 import { ArrowRight, CheckCircle, XCircle, Clock, AlertTriangle, Search, X } from 'lucide-react';
-import { api } from '../services/api';
+import { api } from '../services/api-supabase';
 
 interface CheckInProps {
   onCheckIn: (id: string) => Promise<{ success: boolean; message: string; client?: any; isWarning?: boolean }>;
@@ -48,10 +48,27 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
   };
 
   const handleSearchClient = async () => {
-    if (!recoverDni) return;
-    const clients = await api.getClients();
-    const client = clients.find(c => c.dni.includes(recoverDni) || c.firstName.toLowerCase().includes(recoverDni.toLowerCase()));
-    setFoundClient(client || null);
+    if (!recoverDni.trim()) return;
+    
+    try {
+      const clients = await api.getClients();
+      console.log('Clients found:', clients.length);
+      console.log('Searching for DNI:', recoverDni);
+      
+      // Buscar por DNI exacto primero, luego por coincidencia parcial
+      const client = clients.find(c => 
+        c.dni === recoverDni.trim() || 
+        c.dni.includes(recoverDni.trim()) ||
+        c.firstName.toLowerCase().includes(recoverDni.toLowerCase()) ||
+        c.lastName.toLowerCase().includes(recoverDni.toLowerCase())
+      );
+      
+      console.log('Found client:', client);
+      setFoundClient(client || null);
+    } catch (error) {
+      console.error('Error searching client:', error);
+      setFoundClient(null);
+    }
   };
 
   return (
@@ -166,8 +183,23 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
                  {foundClient ? (
                    <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-100 dark:border-green-800 text-center">
                       <p className="text-sm text-green-800 dark:text-green-300 font-bold mb-1">{foundClient.firstName} {foundClient.lastName}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Tu código es:</p>
-                      <p className="text-3xl font-mono font-bold text-slate-900 dark:text-white tracking-widest">{foundClient.humanId}</p>
+                      {foundClient.humanId ? (
+                        <>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Tu código es:</p>
+                          <p className="text-3xl font-mono font-bold text-slate-900 dark:text-white tracking-widest">{foundClient.humanId}</p>
+                        </>
+                      ) : (
+                        <div className="text-center">
+                          <p className="text-xs text-red-600 dark:text-red-400 mb-2">⚠️ Este cliente no tiene código asignado</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Contacta al administrador para generar su código</p>
+                          <details className="mt-2 text-xs text-left">
+                            <summary className="cursor-pointer text-slate-400">Ver datos técnicos</summary>
+                            <pre className="mt-1 p-2 bg-slate-100 dark:bg-slate-700 rounded text-xs overflow-x-auto">
+                              {JSON.stringify(foundClient, null, 2)}
+                            </pre>
+                          </details>
+                        </div>
+                      )}
                    </div>
                  ) : recoverDni && (
                     <p className="text-sm text-center text-slate-400">No se encontró el cliente.</p>

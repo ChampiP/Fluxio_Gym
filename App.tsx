@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from './services/api-supabase';
+import { supabase } from './services/supabase';
 import { Client, Membership, AttendanceLog, AppSettings, Transaction } from './types';
 import { Layout } from './components/Layout';
 import { Dashboard } from './views/Dashboard';
@@ -12,7 +13,9 @@ import { Login } from './views/Login';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const [currentView, setCurrentView] = useState('dashboard');
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Global State
   const [clients, setClients] = useState<Client[]>([]);
@@ -21,12 +24,49 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [settings, setSettings] = useState<AppSettings>({ gymName: 'GymFlex', primaryColor: '#3b82f6', logoUrl: null, darkMode: false });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  // Initial Data Load
+  // Auth State Management
   useEffect(() => {
-    loadData();
-  }, []); // Cargar al inicio, no depende de auth para simplificar, auth se maneja en render
+    // Verificar sesión inicial
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setUser(session.user);
+        setIsAuthenticated(true);
+      }
+      setAuthLoading(false);
+    });
+
+    // Escuchar cambios en autenticación
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session) {
+          setUser(session.user);
+          setIsAuthenticated(true);
+          loadData(); // Cargar datos cuando el usuario se autentique
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
+          // Limpiar datos cuando el usuario cierre sesión
+          setClients([]);
+          setMemberships([]);
+          setLogs([]);
+          setTransactions([]);
+          setProducts([]);
+        }
+        setAuthLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load data when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadData();
+    }
+  }, [isAuthenticated]);
 
   // Apply Dark Mode
   useEffect(() => {
@@ -38,8 +78,13 @@ const App: React.FC = () => {
   }, [settings.darkMode]);
 
   const loadData = async () => {
+    if (!isAuthenticated) return;
+    
     setLoading(true);
     try {
+      // Fix any clients without humanId first
+      await api.fixClientHumanIds();
+      
       const [c, m, l, t, s, p] = await Promise.all([
         api.getClients(),
         api.getMemberships(),
@@ -61,9 +106,11 @@ const App: React.FC = () => {
     }
   };
 
-  const handleCreateClient = async (data: any) => {
-    await api.createClient(data);
-    loadData();
+  const handleCreateClient = async (createdClient?: any) => {
+    // Solo recargar datos si se proporciona el cliente creado
+    if (createdClient) {
+      loadData();
+    }
   };
 
   const handleRenewMembership = async (clientId: string, membershipId: string) => {
@@ -117,9 +164,32 @@ const App: React.FC = () => {
     loadData(); // Recargamos todo para actualizar stock y transacciones
   };
 
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      // El estado se manejará automáticamente por el listener
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+    }
+  };
+
   // --- Render ---
+
+  // Auth Loading State
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-slate-600 dark:text-slate-400">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login if not authenticated
   if (!isAuthenticated) {
-    return <Login onLogin={() => setIsAuthenticated(true)} />;
+    return <Login onLogin={() => {}} />; // onLogin se maneja automáticamente por el auth listener
   }
 
   if (loading) {
@@ -134,7 +204,7 @@ const App: React.FC = () => {
     <Layout
       activeView={currentView}
       onNavigate={setCurrentView}
-      onLogout={() => setIsAuthenticated(false)}
+      onLogout={handleLogout}
       settings={settings}
       onToggleDarkMode={toggleDarkMode}
     >

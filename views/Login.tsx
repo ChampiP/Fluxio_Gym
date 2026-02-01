@@ -1,22 +1,38 @@
 import React, { useState } from 'react';
-import { Dumbbell } from 'lucide-react';
+import { Dumbbell, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { supabase } from '../services/supabase';
 
 interface LoginProps {
   onLogin: () => void;
 }
 
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulated auth
-    if (username === 'admin' && password === 'admin') {
-      onLogin();
-    } else {
-      setError('Credenciales incorrectas (Prueba: admin / admin)');
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) throw error;
+      
+      if (data.user) {
+        onLogin();
+      }
+    } catch (error: any) {
+      setError(error.message || 'Error al iniciar sesión');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -30,45 +46,73 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <Dumbbell size={40} />
             </div>
           </div>
-          <h2 className="text-2xl font-bold text-center text-slate-900 dark:text-white mb-2">Bienvenido</h2>
-          <p className="text-center text-slate-500 dark:text-slate-400 mb-8 font-medium">Gym Management System</p>
+          <h2 className="text-2xl font-bold text-center text-slate-900 dark:text-white mb-2">
+            Iniciar Sesión
+          </h2>
+          <p className="text-center text-slate-500 dark:text-slate-400 mb-8 font-medium">GymFlex Pro</p>
 
-          <form onSubmit={handleSubmit} className="space-y-5" autoComplete="on">
+          <form onSubmit={handleSignIn} className="space-y-5">
+
             <div>
-              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Usuario</label>
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                <span className="flex items-center gap-2">
+                  <Mail size={16} />
+                  <span>Email</span>
+                </span>
+              </label>
               <input
-                type="text"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                autoComplete="username"
-                className="w-full bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-900 dark:text-white font-medium placeholder-slate-400 dark:placeholder-slate-500"
-                placeholder="admin"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Contraseña</label>
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                autoComplete="current-password"
-                className="w-full bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-900 dark:text-white font-medium placeholder-slate-400 dark:placeholder-slate-500"
-                placeholder="••••••"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition-all duration-200 text-sm"
+                placeholder="tu@email.com"
+                required
+                autoComplete="email"
               />
             </div>
 
-            {error && <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg text-sm text-center font-medium border border-red-100 dark:border-red-800">{error}</div>}
+            <div>
+              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                <span className="flex items-center gap-2">
+                  <Lock size={16} />
+                  <span>Contraseña</span>
+                </span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 pr-12 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition-all duration-200 text-sm"
+                  placeholder="Tu contraseña"
+                  required
+                  minLength={6}
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div className="text-red-700 bg-red-50 border border-red-200 dark:text-red-400 dark:bg-red-900/20 dark:border-red-800 text-sm p-3 rounded-lg">
+                {error}
+              </div>
+            )}
 
             <button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-bold py-3.5 rounded-lg transition-colors shadow-md text-lg mt-2"
+              disabled={isLoading}
+              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 text-sm disabled:cursor-not-allowed"
             >
-              Iniciar Sesión
+              {isLoading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
             </button>
           </form>
-          <div className="mt-8 text-center text-xs text-slate-400 dark:text-slate-500 font-medium">
-            &copy; 2024 GymFlex System
-          </div>
         </div>
       </div>
     </div>

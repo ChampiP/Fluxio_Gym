@@ -1,16 +1,60 @@
 import { jsPDF } from "jspdf";
 import { AppSettings, Transaction, Client } from "../types";
 
-// Helper for "SON: X SOLES" (Simplificado para números enteros y decimales)
+// Helper for "SON: X SOLES" - Convierte números a palabras en español
 const numberToWords = (amount: number): string => {
   const integerPart = Math.floor(amount);
   const decimalPart = Math.round((amount - integerPart) * 100);
   const decimalStr = decimalPart < 10 ? `0${decimalPart}` : `${decimalPart}`;
 
-  // Nota: En un entorno de producción real, se recomienda usar una librería completa 
-  // para convertir cualquier número a texto (ej. 'veinticinco'). 
-  // Para efectos de este archivo único, usamos el formato numérico-legal válido.
-  return `SON: ${integerPart} CON ${decimalStr}/100 SOLES`;
+  // Función para convertir números a palabras en español (1-999)
+  const convertToWords = (num: number): string => {
+    if (num === 0) return 'CERO';
+    
+    const unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
+    const decenas = ['', '', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+    const especiales = ['DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
+    const centenas = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
+
+    let result = '';
+    
+    // Centenas
+    const c = Math.floor(num / 100);
+    const resto = num % 100;
+    
+    if (c > 0) {
+      if (c === 1 && resto === 0) {
+        result = 'CIEN';
+      } else {
+        result = centenas[c];
+      }
+    }
+    
+    // Decenas y unidades
+    if (resto >= 20) {
+      const d = Math.floor(resto / 10);
+      const u = resto % 10;
+      if (d === 2 && u > 0) {
+        // Casos especiales: 21-29 se escriben juntos
+        const veintiunos = ['', 'VEINTIUNO', 'VEINTIDOS', 'VEINTITRES', 'VEINTICUATRO', 'VEINTICINCO', 'VEINTISEIS', 'VEINTISIETE', 'VEINTIOCHO', 'VEINTINUEVE'];
+        result += (result ? ' ' : '') + veintiunos[u];
+      } else {
+        result += (result ? ' ' : '') + decenas[d];
+        if (u > 0) {
+          result += ' Y ' + unidades[u];
+        }
+      }
+    } else if (resto >= 10) {
+      result += (result ? ' ' : '') + especiales[resto - 10];
+    } else if (resto > 0) {
+      result += (result ? ' ' : '') + unidades[resto];
+    }
+    
+    return result || 'CERO';
+  };
+
+  const wordsAmount = convertToWords(integerPart);
+  return `SON: ${wordsAmount} CON ${decimalStr}/100 SOLES`;
 };
 
 // Helper para generar número de recibo profesional
