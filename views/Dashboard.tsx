@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Client, AttendanceLog, Transaction, AppSettings, Membership } from '../types';
 import { Users, AlertCircle, TrendingUp, CheckCircle, Clock, DollarSign, Eye, EyeOff, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { api } from '../services/api';
+import { api } from '../services/api-supabase';
 import { generateInvoice } from '../services/invoice';
 
 interface DashboardProps {

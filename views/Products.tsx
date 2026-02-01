@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product, Client } from '../types';
-import { api } from '../services/api';
+import { api } from '../services/api-supabase';
 import { Plus, ShoppingBag, Trash2, Search, DollarSign, Package, X } from 'lucide-react';
 
 interface ProductsProps {

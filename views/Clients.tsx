@@ -59,6 +59,37 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
     isEnabled: false
   });
 
+  // Custom Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+    isDestructive?: boolean;
+  }>({ 
+    isOpen: false, 
+    title: '', 
+    message: '', 
+    onConfirm: () => {}, 
+    onCancel: () => {} 
+  });
+
+  // Helper function to show custom confirmation
+  const showConfirmation = (title: string, message: string, onConfirm: () => void, isDestructive: boolean = false) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      },
+      onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false })),
+      isDestructive
+    });
+  };
+
   useEffect(() => {
     api.getSettings().then(setSettings);
   }, []);
@@ -137,11 +168,20 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
     }
 
     if (formData.initialMembershipId) {
-      if (!window.confirm('¿Confirmas registrar al cliente y realizar el cobro de la membresía seleccionada?')) {
-        return;
-      }
+      showConfirmation(
+        'Confirmar Registro',
+        '¿Confirmas registrar al cliente y realizar el cobro de la membresía seleccionada?',
+        async () => {
+          await processClientRegistration();
+        }
+      );
+      return;
     }
 
+    await processClientRegistration();
+  };
+
+  const processClientRegistration = async () => {
     setIsSubmitting(true);
     try {
       // Sanitizar inputs
@@ -290,12 +330,20 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
         confirmMessage = `¿Confirmas el pago completo de S/.${membership.cost}?`;
       }
 
-      if (!window.confirm(confirmMessage)) {
-        return;
-      }
+      showConfirmation(
+        'Confirmar Renovación',
+        confirmMessage,
+        async () => {
+          await processRenewal(planId, paymentType, membership);
+        }
+      );
+      return;
+    }
+  };
 
-      setRenewingPlanId(planId);
-      try {
+  const processRenewal = async (planId: string, paymentType: string, membership: any) => {
+    setRenewingPlanId(planId);
+    try {
         if (paymentType === 'installments') {
           // Crear plan de cuotas con configuración manual
           const interestRate = installmentConfig.interestRate / 100;
@@ -336,7 +384,6 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
       } finally {
         setRenewingPlanId(null);
       }
-    }
   };
 
   const clearFilters = () => {
@@ -363,10 +410,43 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
     window.open(url, '_blank');
   };
 
-  const downloadReceipt = (tx: Transaction) => {
+  const downloadReceipt = async (tx: Transaction) => {
     if (settings && selectedClient) {
       const membership = memberships.find(m => m.id === selectedClient.activeMembershipId);
-      generateInvoice(tx, settings, selectedClient, membership);
+      
+      // Verificar si es un pago de cuota buscando en la descripción
+      let installmentInfo = null;
+      if (tx.itemDescription.includes('Cuota')) {
+        const match = tx.itemDescription.match(/Cuota (\d+)\/(\d+)/);
+        if (match) {
+          const currentPayment = parseInt(match[1]);
+          const totalPayments = parseInt(match[2]);
+          
+          // Intentar obtener información del plan de cuotas si existe
+          try {
+            const plans = await api.getClientInstallmentPlans(selectedClient.id);
+            const relatedPlan = plans.find(plan => 
+              plan.membershipId === selectedClient.activeMembershipId &&
+              plan.installmentCount === totalPayments
+            );
+            
+            if (relatedPlan) {
+              installmentInfo = {
+                planId: relatedPlan.id,
+                currentPayment: currentPayment,
+                totalPayments: totalPayments,
+                monthlyAmount: relatedPlan.installmentAmount,
+                totalAmount: relatedPlan.totalAmount,
+                interestRate: relatedPlan.interestRate
+              };
+            }
+          } catch (error) {
+            console.warn('No se pudo obtener información del plan de cuotas', error);
+          }
+        }
+      }
+      
+      generateInvoice(tx, settings, selectedClient, membership, installmentInfo);
     }
   };
 
@@ -1280,11 +1360,30 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                                     const method = prompt('Método de pago (cash/card/transfer/yape/plin):', 'cash');
                                     if (method && ['cash', 'card', 'transfer', 'yape', 'plin'].includes(method)) {
                                       try {
-                                        await api.markInstallmentAsPaid(payment.id, method as any);
+                                        const paymentResult = await api.markInstallmentAsPaid(payment.id, method as any);
+                                        
                                         // Recargar pagos
                                         const updatedPayments = await api.getInstallmentPayments(selectedPlan.id);
                                         setInstallmentPayments(updatedPayments);
-                                        alert('✅ Pago registrado exitosamente');
+                                        
+                                        // Recargar cliente para actualizar estado
+                                        const allClients = await api.getClients();
+                                        const updated = allClients.find(c => c.id === selectedClient.id);
+                                        if (updated) setSelectedClient(updated);
+                                        
+                                        // Generar recibo automáticamente con información de cuotas
+                                        if (settings) {
+                                          const membership = memberships.find(m => m.id === selectedClient.activeMembershipId);
+                                          generateInvoice(
+                                            paymentResult.transaction, 
+                                            settings, 
+                                            selectedClient, 
+                                            membership,
+                                            paymentResult.installmentInfo
+                                          );
+                                        }
+                                        
+                                        alert('✅ Pago registrado exitosamente y recibo generado');
                                       } catch (error) {
                                         console.error('Error marking payment:', error);
                                         alert('❌ Error al registrar el pago');
@@ -1324,6 +1423,40 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
               >
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in-up border border-slate-200 dark:border-slate-700">
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3">
+                {confirmModal.title}
+              </h3>
+              <div className="text-sm text-slate-600 dark:text-slate-300 mb-6 whitespace-pre-line">
+                {confirmModal.message}
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={confirmModal.onCancel}
+                  className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-medium transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmModal.onConfirm}
+                  className={`px-4 py-2 text-white font-medium rounded-lg transition-colors ${
+                    confirmModal.isDestructive 
+                      ? 'bg-red-600 hover:bg-red-700' 
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  Confirmar
+                </button>
+              </div>
             </div>
           </div>
         </div>

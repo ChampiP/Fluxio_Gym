@@ -67,7 +67,7 @@ const generateReceiptNumber = (transactionId: string, date: string): string => {
   return `REC-${year}-${paddedNum}`;
 };
 
-export const generateInvoice = (transaction: Transaction, settings: AppSettings, client?: Client | null, membership?: any) => {
+export const generateInvoice = (transaction: Transaction, settings: AppSettings, client?: Client | null, membership?: any, installmentInfo?: { planId: string, currentPayment: number, totalPayments: number, monthlyAmount: number, totalAmount: number, interestRate: number } | null) => {
   const doc = new jsPDF();
   const width = doc.internal.pageSize.getWidth();
   const height = doc.internal.pageSize.getHeight();
@@ -213,14 +213,28 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
   
   // Descripción mejorada con duración si es membresía
   let fullDesc = desc.trim();
-  if (membership && membership.durationDays) {
+  if (installmentInfo) {
+    fullDesc += ` - CUOTA ${installmentInfo.currentPayment}/${installmentInfo.totalPayments}`;
+  } else if (membership && membership.durationDays) {
     fullDesc += ` (${membership.durationDays} días)`;
   }
   doc.text(fullDesc, margin + 20, y);
   doc.text(unitPrice.toFixed(2), width - margin - 30, y, { align: 'right' });
   doc.text(transaction.amount.toFixed(2), width - margin - 2, y, { align: 'right' });
 
-  y += 20;
+  // Información de cuotas si aplica
+  if (installmentInfo) {
+    y += 3;
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "bold");
+    doc.text(`PLAN DE CUOTAS: Pago ${installmentInfo.currentPayment} de ${installmentInfo.totalPayments}`, margin + 20, y);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Cuota mensual: S/.${installmentInfo.monthlyAmount.toFixed(2)}`, margin + 20, y + 4);
+    doc.text(`Total del plan: S/.${installmentInfo.totalAmount.toFixed(2)} (Interés: ${(installmentInfo.interestRate * 100).toFixed(1)}%)`, margin + 20, y + 8);
+    y += 8;
+  }
+
+  y += 12;
 
   // Línea final tabla
   doc.line(margin, y, width - margin, y);

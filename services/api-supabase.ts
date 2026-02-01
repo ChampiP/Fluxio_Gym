@@ -701,8 +701,34 @@ export const api = {
     },
 
     // Marcar pago como pagado
-    async markInstallmentAsPaid(paymentId: string, paymentMethod: 'cash' | 'card' | 'transfer' | 'yape' | 'plin', notes?: string): Promise<void> {
+    async markInstallmentAsPaid(paymentId: string, paymentMethod: 'cash' | 'card' | 'transfer' | 'yape' | 'plin', notes?: string): Promise<{
+        transaction: Transaction;
+        installmentInfo: {
+            planId: string;
+            currentPayment: number;
+            totalPayments: number;
+            monthlyAmount: number;
+            totalAmount: number;
+            interestRate: number;
+        };
+    }> {
         await delay();
+        
+        // Obtener información del pago y plan antes de actualizarlo
+        const { data: paymentData, error: paymentError } = await supabase
+            .from('installment_payments')
+            .select(`
+                *,
+                installment_plans!inner (
+                    *,
+                    clients!inner (first_name, last_name, id),
+                    memberships!inner (name)
+                )
+            `)
+            .eq('id', paymentId)
+            .single();
+
+        if (paymentError) throw paymentError;
         
         const { error } = await supabase
             .from('installment_payments')
@@ -716,28 +742,68 @@ export const api = {
 
         if (error) throw error;
 
+        // Crear transacción para el pago
+        const client = paymentData.installment_plans.clients;
+        const plan = paymentData.installment_plans;
+        const membership = paymentData.installment_plans.memberships;
+        
+        const transactionId = crypto.randomUUID();
+        const { error: txError } = await supabase
+            .from('transactions')
+            .insert({
+                id: transactionId,
+                client_id: client.id,
+                client_name: `${client.first_name} ${client.last_name}`,
+                type: 'membership',
+                payment_method: paymentMethod,
+                amount: paymentData.amount,
+                item_description: `${membership.name} - Cuota ${paymentData.installment_number}/${plan.installment_count}`,
+                date: new Date().toISOString()
+            });
+
+        if (txError) throw txError;
+
         // Verificar si el plan está completado
-        const { data: payment } = await supabase
+        const { data: pendingPayments } = await supabase
             .from('installment_payments')
-            .select('plan_id')
-            .eq('id', paymentId)
-            .single();
+            .select('id')
+            .eq('plan_id', paymentData.plan_id)
+            .eq('status', 'pending');
 
-        if (payment) {
-            const { data: pendingPayments } = await supabase
-                .from('installment_payments')
-                .select('id')
-                .eq('plan_id', payment.plan_id)
-                .eq('status', 'pending');
-
-            if (!pendingPayments || pendingPayments.length === 0) {
-                // Marcar plan como completado
-                await supabase
-                    .from('installment_plans')
-                    .update({ status: 'completed' })
-                    .eq('id', payment.plan_id);
-            }
+        if (!pendingPayments || pendingPayments.length === 0) {
+            // Marcar plan como completado
+            await supabase
+                .from('installment_plans')
+                .update({ status: 'completed' })
+                .eq('id', paymentData.plan_id);
         }
+
+        // Activar cliente inmediatamente
+        await supabase
+            .from('clients')
+            .update({ status: 'active' })
+            .eq('id', client.id);
+
+        return {
+            transaction: {
+                id: transactionId,
+                clientId: client.id,
+                clientName: `${client.first_name} ${client.last_name}`,
+                type: 'membership',
+                paymentMethod: paymentMethod,
+                amount: paymentData.amount,
+                itemDescription: `${membership.name} - Cuota ${paymentData.installment_number}/${plan.installment_count}`,
+                date: new Date().toISOString()
+            },
+            installmentInfo: {
+                planId: paymentData.plan_id,
+                currentPayment: paymentData.installment_number,
+                totalPayments: plan.installment_count,
+                monthlyAmount: plan.installment_amount,
+                totalAmount: plan.total_amount,
+                interestRate: plan.interest_rate
+            }
+        };
     },
 
     // Obtener pagos vencidos
