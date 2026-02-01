@@ -5,6 +5,8 @@ CREATE TABLE memberships (
   description TEXT,
   cost NUMERIC NOT NULL,
   duration_days INTEGER NOT NULL,
+  is_promotion BOOLEAN DEFAULT FALSE,
+  beneficiaries_count INTEGER DEFAULT 1,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -17,6 +19,7 @@ CREATE TABLE clients (
   phone TEXT NOT NULL,
   dni TEXT NOT NULL,
   email TEXT NOT NULL,
+  address TEXT,
   active_membership_id UUID REFERENCES memberships(id),
   membership_start_date DATE,
   membership_expiry_date DATE,

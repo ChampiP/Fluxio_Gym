@@ -134,7 +134,7 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
   doc.setFont("helvetica", "bold");
   doc.text("Dirección:", margin, y + 14);
   doc.setFont("helvetica", "normal");
-  doc.text(client?.phone || "-", margin + 25, y + 14);
+  doc.text(client?.address || "-", margin + 25, y + 14);
 
   y += 18;
   doc.line(margin, y, width - margin, y);

@@ -28,6 +28,7 @@ export interface Client {
   phone: string;
   dni: string;
   email: string;
+  address?: string;
   activeMembershipId?: string;
   membershipStartDate?: string; // ISO Date
   membershipExpiryDate?: string; // ISO Date

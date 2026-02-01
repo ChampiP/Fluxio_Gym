@@ -241,6 +241,7 @@ export const api = {
             phone: c.phone,
             dni: c.dni,
             email: c.email,
+            address: c.address,
             activeMembershipId: c.active_membership_id,
             membershipStartDate: c.membership_start_date,
             membershipExpiryDate: c.membership_expiry_date,
@@ -272,6 +273,7 @@ export const api = {
             phone: data.phone,
             dni: data.dni,
             email: data.email || '',
+            address: data.address || '',
             status: 'inactive',
             registered_at: now
         };
@@ -306,6 +308,7 @@ export const api = {
             phone: newClient.phone,
             dni: newClient.dni,
             email: newClient.email,
+            address: newClient.address,
             activeMembershipId: newClient.active_membership_id,
             membershipStartDate: newClient.membership_start_date,
             membershipExpiryDate: newClient.membership_expiry_date,

@@ -25,7 +25,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
 
   // New Client Form State
   const [formData, setFormData] = useState({
-    firstName: '', lastName: '', dni: '', email: '', phone: '', initialMembershipId: ''
+    firstName: '', lastName: '', dni: '', email: '', phone: '', address: '', initialMembershipId: ''
   });
 
   // Client Details Tab State
@@ -114,7 +114,8 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
         lastName: sanitizeInput(formData.lastName.trim()),
         dni: formData.dni.trim(),
         email: formData.email.trim(),
-        phone: formData.phone.trim()
+        phone: formData.phone.trim(),
+        address: formData.address.trim()
       });
 
       if (formData.initialMembershipId) {
@@ -122,7 +123,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
       }
 
       setIsModalOpen(false);
-      setFormData({ firstName: '', lastName: '', dni: '', email: '', phone: '', initialMembershipId: '' });
+      setFormData({ firstName: '', lastName: '', dni: '', email: '', phone: '', address: '', initialMembershipId: '' });
       alert('✅ Cliente registrado exitosamente');
     } catch (error) {
       console.error('Error creating client:', error);
@@ -410,6 +411,11 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                 <input type="email" className="w-full bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 dark:text-white"
                   value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
               </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Dirección (Opcional)</label>
+                <input type="text" className="w-full bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-slate-900 dark:text-white"
+                  value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} placeholder="Ej: Av. Principal 123, Apt 4B" />
+              </div>
 
               <div className="pt-2 border-t border-slate-100 dark:border-slate-700">
                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Membresía Inicial (Opcional)</label>
@@ -495,6 +501,24 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
               {activeTab === 'info' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div>
+                    <div className="mb-6">
+                      <h3 className="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Información Personal</h3>
+                      <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Teléfono</p>
+                          <p className="text-slate-900 dark:text-white font-medium">{selectedClient.phone || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Email</p>
+                          <p className="text-slate-900 dark:text-white font-medium break-all">{selectedClient.email || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Dirección</p>
+                          <p className="text-slate-900 dark:text-white font-medium">{selectedClient.address || '-'}</p>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="mb-6">
                       <h3 className="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Membresía Actual</h3>
                       {selectedClient.activeMembershipId ? (
