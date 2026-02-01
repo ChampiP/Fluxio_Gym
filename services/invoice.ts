@@ -3,14 +3,24 @@ import { AppSettings, Transaction, Client } from "../types";
 
 // Helper for "SON: X SOLES" (Simplificado para números enteros y decimales)
 const numberToWords = (amount: number): string => {
-    const integerPart = Math.floor(amount);
-    const decimalPart = Math.round((amount - integerPart) * 100);
-    const decimalStr = decimalPart < 10 ? `0${decimalPart}` : `${decimalPart}`;
-    
-    // Nota: En un entorno de producción real, se recomienda usar una librería completa 
-    // para convertir cualquier número a texto (ej. 'veinticinco'). 
-    // Para efectos de este archivo único, usamos el formato numérico-legal válido.
-    return `SON: ${integerPart} CON ${decimalStr}/100 SOLES`;
+  const integerPart = Math.floor(amount);
+  const decimalPart = Math.round((amount - integerPart) * 100);
+  const decimalStr = decimalPart < 10 ? `0${decimalPart}` : `${decimalPart}`;
+
+  // Nota: En un entorno de producción real, se recomienda usar una librería completa 
+  // para convertir cualquier número a texto (ej. 'veinticinco'). 
+  // Para efectos de este archivo único, usamos el formato numérico-legal válido.
+  return `SON: ${integerPart} CON ${decimalStr}/100 SOLES`;
+};
+
+// Helper para generar número de recibo profesional
+const generateReceiptNumber = (transactionId: string, date: string): string => {
+  const year = new Date(date).getFullYear();
+  // Tomar los últimos 4 caracteres del UUID y convertirlos a número
+  const hash = transactionId.slice(-4).toUpperCase();
+  const num = parseInt(hash, 16) % 10000; // Convertir hex a decimal y limitar a 4 dígitos
+  const paddedNum = String(num).padStart(4, '0');
+  return `REC-${year}-${paddedNum}`;
 };
 
 export const generateInvoice = (transaction: Transaction, settings: AppSettings, client?: Client | null) => {
@@ -18,43 +28,46 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
   const width = doc.internal.pageSize.getWidth();
   const height = doc.internal.pageSize.getHeight();
   const margin = 12;
-  
+
+  // Generar número de recibo profesional
+  const receiptNumber = generateReceiptNumber(transaction.id, transaction.date);
+
   // --- CONFIGURACIÓN DE COLOR: ESTRICTAMENTE BLANCO Y NEGRO ---
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
-  
+
   let y = 15;
 
   // --- 1. CAJA RUC (Lado Derecho - Formato SUNAT) ---
   const boxWidth = 75;
   const boxHeight = 28;
   const boxX = width - margin - boxWidth;
-  
+
   // Borde Negro
   doc.setLineWidth(0.4);
   doc.rect(boxX, y, boxWidth, boxHeight);
-  
+
   // RUC
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.text(`R.U.C. ${settings.ruc || '00000000000'}`, boxX + (boxWidth / 2), y + 8, { align: 'center' });
-  
+
   // Tipo de Documento (Fondo Negro / Texto Blanco o Bordeado)
   // Para garantizar impresión B/N perfecta, usamos franja negra
-  doc.setFillColor(0, 0, 0); 
+  doc.setFillColor(0, 0, 0);
   doc.rect(boxX, y + 10, boxWidth, 8, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(10);
   doc.text("RECIBO DE PAGO", boxX + (boxWidth / 2), y + 15.5, { align: 'center' });
-  
+
   // Número
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(11);
-  doc.text(`N° ${transaction.id.toUpperCase()}`, boxX + (boxWidth / 2), y + 24, { align: 'center' });
+  doc.text(`N° ${receiptNumber}`, boxX + (boxWidth / 2), y + 24, { align: 'center' });
 
   // --- 2. DATOS DEL EMISOR (Lado Izquierdo) ---
   let textX = margin;
-  
+
   // Logo (si existe)
   if (settings.logoUrl) {
     try {
@@ -62,7 +75,7 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
       // pero el resto del texto será negro)
       doc.addImage(settings.logoUrl, 'PNG', margin, y, 22, 22, undefined, 'FAST');
       textX += 28;
-    } catch(e) {
+    } catch (e) {
       // Fallback
     }
   }
@@ -76,14 +89,14 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
   doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
   if (settings.businessName) {
-      doc.text(settings.businessName, textX, y + 11);
+    doc.text(settings.businessName, textX, y + 11);
   }
 
   // Dirección y Teléfono
   doc.setFont("helvetica", "normal");
   const addressLines = doc.splitTextToSize(settings.address || '', 85);
   doc.text(addressLines, textX, y + 16);
-  
+
   if (settings.phone) {
     doc.text(`Telf: ${settings.phone}`, textX, y + 16 + (addressLines.length * 3.5) + 2);
   }
@@ -97,7 +110,7 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
   y += 5;
 
   doc.setFontSize(9);
-  
+
   // Fila 1
   doc.setFont("helvetica", "bold");
   doc.text("Señor(es):", margin, y + 4);
@@ -131,11 +144,11 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
 
   // --- 4. TABLA DE ITEMS ---
   y += 2;
-  
+
   // Encabezado
   doc.setFillColor(240, 240, 240); // Gris muy claro para encabezado de tabla (permitido en formal)
   doc.rect(margin, y, width - (margin * 2), 6, 'F');
-  
+
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
   doc.text("CANT.", margin + 4, y + 4);
@@ -145,10 +158,10 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
 
   y += 6;
   doc.setLineWidth(0.1);
-  
+
   // Items
   doc.setFont("helvetica", "normal");
-  
+
   const isProduct = transaction.type === 'product_sale';
   const qty = isProduct ? parseInt(transaction.itemDescription.split('x')[0]) || 1 : 1;
   const desc = isProduct ? transaction.itemDescription.split('x')[1] || transaction.itemDescription : transaction.itemDescription;
@@ -172,7 +185,7 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
   const igv = total - subtotal;
 
   y += 5;
-  
+
   // Izquierda: Monto en Letras
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
@@ -181,7 +194,7 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
   // Derecha: Totales numéricos
   const rightLabelsX = width - margin - 35;
   const rightValuesX = width - margin;
-  
+
   doc.text("OP. GRAVADA:", rightLabelsX, y + 4, { align: 'right' });
   doc.setFont("helvetica", "normal");
   doc.text(subtotal.toFixed(2), rightValuesX, y + 4, { align: 'right' });
@@ -198,7 +211,7 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
 
   // --- 6. PIE DE PAGINA / OBSERVACIONES ---
   y += 25;
-  
+
   // Caja de observaciones
   doc.setDrawColor(0, 0, 0);
   doc.rect(margin, y, width - (margin * 2), 15);
@@ -213,6 +226,6 @@ export const generateInvoice = (transaction: Transaction, settings: AppSettings,
   doc.setFontSize(7);
   doc.text("COMPROBANTE DE PAGO - CONTROL INTERNO", width / 2, y, { align: 'center' });
   doc.text("Este documento no tiene valor tributario. Uso exclusivo para control interno.", width / 2, y + 4, { align: 'center' });
-  
-  doc.save(`Recibo_${transaction.id}.pdf`);
+
+  doc.save(`Recibo_${receiptNumber}.pdf`);
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from './services/api';
+import { api } from './services/api-supabase';
 import { Client, Membership, AttendanceLog, AppSettings, Transaction } from './types';
 import { Layout } from './components/Layout';
 import { Dashboard } from './views/Dashboard';
@@ -13,21 +13,20 @@ import { Login } from './views/Login';
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
-  
+
   // Global State
   const [clients, setClients] = useState<Client[]>([]);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
   const [settings, setSettings] = useState<AppSettings>({ gymName: 'GymFlex', primaryColor: '#3b82f6', logoUrl: null, darkMode: false });
   const [loading, setLoading] = useState(true);
 
   // Initial Data Load
   useEffect(() => {
-    if (isAuthenticated) {
-      loadData();
-    }
-  }, [isAuthenticated]);
+    loadData();
+  }, []); // Cargar al inicio, no depende de auth para simplificar, auth se maneja en render
 
   // Apply Dark Mode
   useEffect(() => {
@@ -41,18 +40,20 @@ const App: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [c, m, l, t, s] = await Promise.all([
+      const [c, m, l, t, s, p] = await Promise.all([
         api.getClients(),
         api.getMemberships(),
         api.getLogs(),
         api.getTransactions(),
-        api.getSettings()
+        api.getSettings(),
+        api.getProducts()
       ]);
       setClients(c);
       setMemberships(m);
       setLogs(l);
       setTransactions(t);
       setSettings(s);
+      setProducts(p);
     } catch (error) {
       console.error("Error loading data", error);
     } finally {
@@ -60,45 +61,37 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Handlers ---
-
   const handleCreateClient = async (data: any) => {
-    const newClient = await api.createClient(data);
-    setClients(prev => [...prev, newClient]);
+    await api.createClient(data);
+    loadData();
   };
 
-  const handleRenewMembership = async (clientId: string, planId: string) => {
-    await api.renewMembership(clientId, planId);
-    // Refresh clients and transactions
-    const updatedClients = await api.getClients();
-    const updatedTransactions = await api.getTransactions();
-    setClients(updatedClients);
-    setTransactions(updatedTransactions);
+  const handleRenewMembership = async (clientId: string, membershipId: string) => {
+    await api.renewMembership(clientId, membershipId);
+    loadData();
   };
 
-  const handleSaveMembership = async (m: Membership) => {
-    await api.saveMembership(m);
-    const updated = await api.getMemberships();
-    setMemberships(updated);
+  const handleSaveMembership = async (membership: Membership) => {
+    await api.saveMembership(membership);
+    loadData();
   };
 
   const handleDeleteMembership = async (id: string) => {
     await api.deleteMembership(id);
-    const updated = await api.getMemberships();
-    setMemberships(updated);
+    loadData();
   };
 
   const handleCheckIn = async (humanId: string) => {
     const result = await api.checkIn(humanId);
-    // Refresh logs
-    const updatedLogs = await api.getLogs();
-    setLogs(updatedLogs);
+    // Solo recargamos logs para eficiencia
+    const l = await api.getLogs();
+    setLogs(l);
     return result;
   };
 
-  const handleSaveSettings = async (s: AppSettings) => {
-    await api.saveSettings(s);
-    setSettings(s);
+  const handleSaveSettings = async (newSettings: AppSettings) => {
+    await api.saveSettings(newSettings);
+    setSettings(newSettings);
   };
 
   const toggleDarkMode = async () => {
@@ -107,8 +100,24 @@ const App: React.FC = () => {
     await api.saveSettings(newSettings);
   };
 
-  // --- Render ---
+  const handleSaveProduct = async (product: any) => {
+    await api.saveProduct(product);
+    const p = await api.getProducts();
+    setProducts(p);
+  };
 
+  const handleDeleteProduct = async (id: string) => {
+    await api.deleteProduct(id);
+    const p = await api.getProducts();
+    setProducts(p);
+  };
+
+  const handleSellProduct = async (productId: string, quantity: number, clientId?: string) => {
+    await api.sellProduct(productId, quantity, clientId);
+    loadData(); // Recargamos todo para actualizar stock y transacciones
+  };
+
+  // --- Render ---
   if (!isAuthenticated) {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
   }
@@ -122,45 +131,52 @@ const App: React.FC = () => {
   }
 
   return (
-    <Layout 
-      activeView={currentView} 
-      onNavigate={setCurrentView} 
+    <Layout
+      activeView={currentView}
+      onNavigate={setCurrentView}
       onLogout={() => setIsAuthenticated(false)}
       settings={settings}
       onToggleDarkMode={toggleDarkMode}
     >
       {currentView === 'dashboard' && (
-        <Dashboard 
-          clients={clients} 
-          logs={logs} 
+        <Dashboard
+          clients={clients}
+          logs={logs}
           transactions={transactions}
-          primaryColor={settings.primaryColor} 
+          primaryColor={settings.primaryColor}
         />
       )}
       {currentView === 'clients' && (
-        <Clients 
-          clients={clients} 
-          memberships={memberships} 
-          onCreateClient={handleCreateClient} 
+        <Clients
+          clients={clients}
+          memberships={memberships}
+          onCreateClient={handleCreateClient}
           onRenewMembership={handleRenewMembership}
           primaryColor={settings.primaryColor}
         />
       )}
       {currentView === 'products' && (
-        <Products primaryColor={settings.primaryColor} />
+        <Products
+          primaryColor={settings.primaryColor}
+          products={products}
+          onSave={handleSaveProduct}
+          onDelete={handleDeleteProduct}
+          onSell={handleSellProduct}
+          clients={clients}
+        />
       )}
       {currentView === 'memberships' && (
-        <Memberships 
-          memberships={memberships} 
-          onSave={handleSaveMembership} 
+        <Memberships
+          memberships={memberships}
+          onSave={handleSaveMembership}
           onDelete={handleDeleteMembership}
           primaryColor={settings.primaryColor}
         />
       )}
       {currentView === 'checkin' && (
-        <CheckIn 
-          onCheckIn={handleCheckIn} 
-          logs={logs} 
+        <CheckIn
+          onCheckIn={handleCheckIn}
+          logs={logs}
           primaryColor={settings.primaryColor}
         />
       )}
