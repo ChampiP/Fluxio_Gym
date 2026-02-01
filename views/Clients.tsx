@@ -209,7 +209,8 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
 
   const downloadReceipt = (tx: Transaction) => {
     if (settings && selectedClient) {
-      generateInvoice(tx, settings, selectedClient);
+      const membership = memberships.find(m => m.id === selectedClient.activeMembershipId);
+      generateInvoice(tx, settings, selectedClient, membership);
     }
   };
 

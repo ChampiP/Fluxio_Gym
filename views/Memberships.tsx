@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Membership } from '../types';
-import { Plus, Trash2, Tag } from 'lucide-react';
+import { Plus, Trash2, Tag, Gift } from 'lucide-react';
 
 interface MembershipsProps {
   memberships: Membership[];
@@ -15,7 +15,8 @@ export const Memberships: React.FC<MembershipsProps> = ({ memberships, onSave, o
   
   // Use 'string | number' type to allow empty strings during editing
   const [formData, setFormData] = useState({
-    id: '', name: '', description: '', cost: '' as string | number, durationDays: '' as string | number
+    id: '', name: '', description: '', cost: '' as string | number, durationDays: '' as string | number,
+    isPromotion: false, beneficiariesCount: '' as string | number
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -29,10 +30,12 @@ export const Memberships: React.FC<MembershipsProps> = ({ memberships, onSave, o
         name: formData.name,
         description: formData.description || '',
         cost: Number(formData.cost),
-        durationDays: Number(formData.durationDays)
+        durationDays: Number(formData.durationDays),
+        isPromotion: formData.isPromotion,
+        beneficiariesCount: formData.isPromotion ? Number(formData.beneficiariesCount) : undefined
       });
       setIsFormOpen(false);
-      setFormData({ id: '', name: '', description: '', cost: '', durationDays: 30 });
+      setFormData({ id: '', name: '', description: '', cost: '', durationDays: 30, isPromotion: false, beneficiariesCount: '' });
     } finally {
       setIsSubmitting(false);
     }
@@ -45,7 +48,7 @@ export const Memberships: React.FC<MembershipsProps> = ({ memberships, onSave, o
   };
 
   const openNewForm = () => {
-    setFormData({ id: '', name: '', description: '', cost: '', durationDays: 30 }); 
+    setFormData({ id: '', name: '', description: '', cost: '', durationDays: 30, isPromotion: false, beneficiariesCount: '' }); 
     setIsFormOpen(true);
   };
 
@@ -69,12 +72,18 @@ export const Memberships: React.FC<MembershipsProps> = ({ memberships, onSave, o
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {memberships.map(plan => (
           <div key={plan.id} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 flex flex-col relative group hover:shadow-md transition-all">
+             {plan.isPromotion && (
+               <div className="absolute top-2 left-2 flex items-center space-x-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-1 rounded-lg text-xs font-bold">
+                 <Gift size={14} />
+                 <span>{plan.beneficiariesCount}x1</span>
+               </div>
+             )}
              <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button onClick={() => handleDeleteClick(plan.id)} className="text-red-400 hover:text-red-600 dark:hover:text-red-300 p-1">
                   <Trash2 size={18} />
                 </button>
              </div>
-             <div className="flex items-center space-x-3 mb-4">
+             <div className="flex items-center space-x-3 mb-4 mt-4">
                 <div className="p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg">
                   <Tag size={20} />
                 </div>
@@ -106,15 +115,33 @@ export const Memberships: React.FC<MembershipsProps> = ({ memberships, onSave, o
             <h2 className="text-xl font-bold mb-4 text-slate-900 dark:text-white">Plan de Membresía</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
+                <label className="flex items-center space-x-2 mb-4">
+                  <input 
+                    type="checkbox" 
+                    checked={formData.isPromotion}
+                    onChange={e => setFormData({...formData, isPromotion: e.target.checked, beneficiariesCount: ''})}
+                    className="w-4 h-4 rounded border-slate-300"
+                  />
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300">¿Es una promoción? (2x1, 3x1, etc)</span>
+                </label>
+              </div>
+              <div>
                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Nombre del Plan</label>
                 <input required className="w-full bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 p-2 rounded-lg focus:border-blue-500 outline-none text-slate-900 dark:text-white" 
-                  value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                  value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ej: Plan Gold 2x1" />
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Descripción</label>
                 <textarea className="w-full bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 p-2 rounded-lg focus:border-blue-500 outline-none text-slate-900 dark:text-white" rows={2}
-                  value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+                  value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Ej: Membresía familiar para 2 personas" />
               </div>
+              {formData.isPromotion && (
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Cantidad de Beneficiarios</label>
+                  <input type="number" required min="2" className="w-full bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 p-2 rounded-lg focus:border-blue-500 outline-none text-slate-900 dark:text-white" 
+                    value={formData.beneficiariesCount} onChange={e => setFormData({...formData, beneficiariesCount: e.target.value})} placeholder="Ej: 2 (para 2x1), 3 (para 3x1)" />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Costo (S/.)</label>

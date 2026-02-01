@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Client, AttendanceLog, Transaction, AppSettings } from '../types';
+import { Client, AttendanceLog, Transaction, AppSettings, Membership } from '../types';
 import { Users, AlertCircle, TrendingUp, CheckCircle, Clock, DollarSign, Eye, EyeOff, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../services/api';
@@ -10,6 +10,7 @@ interface DashboardProps {
   logs: AttendanceLog[];
   transactions: Transaction[];
   primaryColor: string;
+  memberships?: Membership[];
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ clients, logs, transactions, primaryColor }) => {
@@ -92,7 +93,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ clients, logs, transaction
   const handleDownload = (tx: Transaction) => {
       if (!settings) return;
       const client = clients.find(c => c.id === tx.clientId);
-      generateInvoice(tx, settings, client);
+      const membership = client?.activeMembershipId ? memberships?.find(m => m.id === client.activeMembershipId) : undefined;
+      generateInvoice(tx, settings, client, membership);
   };
 
   return (

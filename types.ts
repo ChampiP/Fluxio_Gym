@@ -5,6 +5,8 @@ export interface Membership {
   description: string;
   cost: number;
   durationDays: number;
+  isPromotion?: boolean;        // Indica si es una promoción
+  beneficiariesCount?: number;  // Cantidad de personas (2 para 2x1, 3 para 3x1, etc)
 }
 
 export interface Measurement {

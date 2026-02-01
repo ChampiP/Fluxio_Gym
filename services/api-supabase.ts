@@ -80,7 +80,9 @@ export const api = {
             name: m.name,
             description: m.description || '',
             cost: m.cost,
-            durationDays: m.duration_days
+            durationDays: m.duration_days,
+            isPromotion: m.is_promotion || false,
+            beneficiariesCount: m.beneficiaries_count || 1
         }));
     },
 
@@ -90,7 +92,9 @@ export const api = {
             name: membership.name,
             description: membership.description,
             cost: membership.cost,
-            duration_days: membership.durationDays
+            duration_days: membership.durationDays,
+            is_promotion: membership.isPromotion || false,
+            beneficiaries_count: membership.beneficiariesCount || 1
         };
 
         if (membership.id) {
@@ -491,6 +495,10 @@ export const api = {
 
         if (membershipError) throw membershipError;
 
+        // Verificar si es una promoción
+        const isPromotion = membership.is_promotion || false;
+        const beneficiariesCount = membership.beneficiaries_count || 1;
+
         const today = new Date();
         let startDate = new Date(today);
 
@@ -504,6 +512,7 @@ export const api = {
         const expiryDate = new Date(startDate);
         expiryDate.setDate(expiryDate.getDate() + membership.duration_days);
 
+        // Actualizar cliente principal
         const { error: updateError } = await supabase
             .from('clients')
             .update({
@@ -516,17 +525,25 @@ export const api = {
 
         if (updateError) throw updateError;
 
+        // Registrar transacción (solo paga una vez, pero múltiples personas tienen acceso)
         const isRenewal = client.active_membership_id === membershipId;
         const { error: txError } = await supabase
             .from('transactions')
             .insert([{
                 client_id: clientId,
-                client_name: `${client.first_name} ${client.last_name}`,
+                client_name: `${client.first_name} ${client.last_name}${isPromotion ? ` (+ ${beneficiariesCount - 1} más)` : ''}`,
                 item_description: membership.name,
                 amount: membership.cost,
                 type: isRenewal ? 'membership_renewal' : 'membership_new'
             }]);
 
         if (txError) throw txError;
+
+        // Si es promoción, crear membresías adicionales para beneficiarios
+        if (isPromotion && beneficiariesCount > 1) {
+            // Aquí el gimnasio debe agregar los beneficiarios manualmente desde Clients
+            // O podría mostrar un modal para hacerlo inmediatamente
+            console.log(`Promoción activada: ${beneficiariesCount} beneficiarios pueden usar esta membresía`);
+        }
     }
 };

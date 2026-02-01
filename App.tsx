@@ -144,6 +144,7 @@ const App: React.FC = () => {
           logs={logs}
           transactions={transactions}
           primaryColor={settings.primaryColor}
+          memberships={memberships}
         />
       )}
       {currentView === 'clients' && (

@@ -1,15 +1,21 @@
 @echo off
-echo ========================================
-echo    GYMFLEX PRO - Iniciando Sistema
-echo ========================================
-echo.
-echo Iniciando servidor de desarrollo...
-echo.
+setlocal enabledelayedexpansion
 
-REM Abrir el navegador después de 3 segundos
-start "" cmd /c "timeout /t 3 /nobreak > nul && start http://localhost:3000"
+REM Crear un script VBS temporal para ejecutar npm run dev oculto
+set "vbs_file=%temp%\run_dev.vbs"
 
-REM Iniciar el servidor de desarrollo
-npm run dev
+(
+echo Set objWshShell = CreateObject("WScript.Shell"^)
+echo objWshShell.Run "cmd /c npm run dev", 0, false
+) > "%vbs_file%"
 
-pause
+REM Abrir el navegador después de 5 segundos
+start "" cmd /c "timeout /t 5 /nobreak > nul && start http://localhost:3000"
+
+REM Ejecutar npm run dev de forma oculta
+cscript.exe "%vbs_file%"
+
+REM Limpiar archivo temporal
+del "%vbs_file%"
+
+endlocal
