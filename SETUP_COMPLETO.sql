@@ -1,6 +1,7 @@
 -- =================================================================
 -- SCRIPT DE INSTALACIÓN COMPLETA - GYMFLEX PRO
 -- Este script elimina todo y recrea la base de datos desde cero
+-- EJECUTA ESTE SCRIPT EN TU SUPABASE SQL EDITOR
 -- =================================================================
 
 -- 1. ELIMINAR TODAS LAS TABLAS Y OBJETOS EXISTENTES (en orden correcto por dependencias)
@@ -77,7 +78,7 @@ CREATE TABLE products (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2.5 Tabla de Transacciones
+-- 2.5 Tabla de Transacciones (CON PAYMENT_METHOD INCLUIDO)
 CREATE TABLE transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id UUID REFERENCES clients(id),
@@ -98,35 +99,30 @@ CREATE TABLE attendance_logs (
   timestamp TIMESTAMPTZ DEFAULT NOW(),
   success BOOLEAN NOT NULL,
   message TEXT NOT NULL,
-  is_warning BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 2.7 Tabla de Configuración
 CREATE TABLE settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  gym_name TEXT NOT NULL,
-  primary_color TEXT NOT NULL,
+  gym_name TEXT DEFAULT 'GymFlex Pro',
+  primary_color TEXT DEFAULT '#3b82f6',
   logo_url TEXT,
-  dark_mode BOOLEAN DEFAULT FALSE,
-  business_name TEXT,
-  ruc TEXT,
-  address TEXT,
-  phone TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  dark_mode BOOLEAN DEFAULT false,
+  business_name TEXT DEFAULT 'INVERSIONES FITNESS S.A.C.',
+  ruc TEXT DEFAULT '20555555551',
+  address TEXT DEFAULT 'Av. Larco 123, Miraflores, Lima',
+  phone TEXT DEFAULT '(01) 444-5555',
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2.8 Tabla de Usuarios del Sistema (Administradores/Staff)
+-- 2.8 Tabla de Usuarios Administradores
 CREATE TABLE admin_users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT NOT NULL,
-  role TEXT CHECK (role IN ('admin', 'staff', 'trainer')) DEFAULT 'staff',
-  permissions JSONB DEFAULT '{"dashboard": true, "clients": true, "checkin": true}',
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  role TEXT CHECK (role IN ('admin', 'staff')) DEFAULT 'staff',
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 2.9 Tabla de Planes de Cuotas
@@ -226,3 +222,10 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
+-- =================================================================
+-- CONFIRMACIÓN DE INSTALACIÓN
+-- =================================================================
+SELECT 
+  '✅ BASE DE DATOS GYMFLEX PRO CONFIGURADA EXITOSAMENTE' as status,
+  'Todas las tablas han sido creadas con payment_method incluido' as detalle,
+  'Ya no necesitas ejecutar migraciones adicionales' as nota;

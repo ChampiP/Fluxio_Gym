@@ -113,6 +113,24 @@ export const api = {
 
     async deleteMembership(id: string): Promise<void> {
         await delay();
+        
+        // First, delete any installment plans that reference this membership
+        const { error: installmentError } = await supabase
+            .from('installment_plans')
+            .delete()
+            .eq('membership_id', id);
+        
+        if (installmentError) throw installmentError;
+        
+        // Then, update any clients that have this membership as their active membership
+        const { error: updateError } = await supabase
+            .from('clients')
+            .update({ active_membership_id: null })
+            .eq('active_membership_id', id);
+        
+        if (updateError) throw updateError;
+        
+        // Now delete the membership
         const { error } = await supabase
             .from('memberships')
             .delete()
@@ -336,6 +354,43 @@ export const api = {
             })
             .eq('id', client.id);
 
+        if (error) throw error;
+    },
+
+    async deleteClient(id: string): Promise<void> {
+        await delay();
+        
+        // First, delete all related data
+        // Delete measurements
+        await supabase
+            .from('measurements')
+            .delete()
+            .eq('client_id', id);
+            
+        // Delete attendance logs
+        await supabase
+            .from('attendance_logs')
+            .delete()
+            .eq('client_id', id);
+            
+        // Delete installment plans
+        await supabase
+            .from('installment_plans')
+            .delete()
+            .eq('client_id', id);
+            
+        // Delete transactions
+        await supabase
+            .from('transactions')
+            .delete()
+            .eq('client_id', id);
+        
+        // Finally, delete the client
+        const { error } = await supabase
+            .from('clients')
+            .delete()
+            .eq('id', id);
+            
         if (error) throw error;
     },
 

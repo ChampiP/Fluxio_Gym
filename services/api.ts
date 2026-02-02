@@ -167,6 +167,22 @@ export const api = {
     }
   },
 
+  deleteClient: async (id: string): Promise<void> => {
+    await delay(200);
+    const clients = await api.getClients();
+    const filteredClients = clients.filter(c => c.id !== id);
+    localStorage.setItem(KEYS.CLIENTS, JSON.stringify(filteredClients));
+    
+    // Also remove related data
+    const transactions = await api.getTransactions();
+    const filteredTransactions = transactions.filter(t => t.clientId !== id);
+    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(filteredTransactions));
+    
+    const logs = await api.getLogs();
+    const filteredLogs = logs.filter(l => l.clientId !== id);
+    localStorage.setItem(KEYS.LOGS, JSON.stringify(filteredLogs));
+  },
+
   addMeasurement: async (clientId: string, measurement: Omit<Measurement, 'id' | 'date'>): Promise<Client | null> => {
     await delay(200);
     const clients = await api.getClients();

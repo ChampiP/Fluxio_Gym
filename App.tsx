@@ -115,17 +115,52 @@ const App: React.FC = () => {
 
   const handleRenewMembership = async (clientId: string, membershipId: string) => {
     await api.renewMembership(clientId, membershipId);
-    loadData();
+    
+    // Solo actualizar el cliente específico y las transacciones
+    const updatedClients = await api.getClients();
+    setClients(updatedClients);
+    
+    const updatedTransactions = await api.getTransactions();
+    setTransactions(updatedTransactions);
   };
 
   const handleSaveMembership = async (membership: Membership) => {
     await api.saveMembership(membership);
-    loadData();
+    
+    // Actualizar solo las membresías
+    if (membership.id) {
+      // Editar existente
+      setMemberships(prev => prev.map(m => m.id === membership.id ? membership : m));
+    } else {
+      // Crear nueva - recargar membresías para obtener el ID generado
+      const updatedMemberships = await api.getMemberships();
+      setMemberships(updatedMemberships);
+    }
   };
 
   const handleDeleteMembership = async (id: string) => {
     await api.deleteMembership(id);
-    loadData();
+    
+    // Solo actualizar lo necesario, no recargar todo
+    setMemberships(prev => prev.filter(m => m.id !== id));
+    
+    // Actualizar clientes que tenían esta membresía (ahora tienen active_membership_id = null)
+    setClients(prev => prev.map(c => 
+      c.activeMembershipId === id 
+        ? { ...c, activeMembershipId: null, status: 'inactive' as const }
+        : c
+    ));
+  };
+
+  const handleDeleteClient = async (id: string) => {
+    await api.deleteClient(id);
+    
+    // Solo remover el cliente del estado, no recargar todo
+    setClients(prev => prev.filter(c => c.id !== id));
+    
+    // Opcionalmente, actualizar logs y transacciones relacionadas
+    setLogs(prev => prev.filter(l => l.clientId !== id));
+    setTransactions(prev => prev.filter(t => t.clientId !== id));
   };
 
   const handleCheckIn = async (humanId: string) => {
@@ -149,19 +184,35 @@ const App: React.FC = () => {
 
   const handleSaveProduct = async (product: any) => {
     await api.saveProduct(product);
-    const p = await api.getProducts();
-    setProducts(p);
+    
+    // Optimizar: solo actualizar productos
+    if (product.id) {
+      // Editar existente
+      setProducts(prev => prev.map(p => p.id === product.id ? product : p));
+    } else {
+      // Crear nuevo - recargar productos para obtener el ID generado
+      const updatedProducts = await api.getProducts();
+      setProducts(updatedProducts);
+    }
   };
 
   const handleDeleteProduct = async (id: string) => {
     await api.deleteProduct(id);
-    const p = await api.getProducts();
-    setProducts(p);
+    
+    // Solo remover del estado local
+    setProducts(prev => prev.filter(p => p.id !== id));
   };
 
   const handleSellProduct = async (productId: string, quantity: number, clientId?: string) => {
     await api.sellProduct(productId, quantity, clientId);
-    loadData(); // Recargamos todo para actualizar stock y transacciones
+    
+    // Solo actualizar productos y transacciones
+    const [updatedProducts, updatedTransactions] = await Promise.all([
+      api.getProducts(),
+      api.getTransactions()
+    ]);
+    setProducts(updatedProducts);
+    setTransactions(updatedTransactions);
   };
 
   const handleLogout = async () => {
@@ -223,6 +274,7 @@ const App: React.FC = () => {
           memberships={memberships}
           onCreateClient={handleCreateClient}
           onRenewMembership={handleRenewMembership}
+          onDeleteClient={handleDeleteClient}
           primaryColor={settings.primaryColor}
         />
       )}

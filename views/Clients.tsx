@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Client, Membership, Transaction, AppSettings } from '../types';
-import { Plus, Search, Filter, MoreHorizontal, User, Calendar, X, MessageCircle, FileText, Download, Activity, Ruler, CreditCard, ChevronRight, Edit, Check } from 'lucide-react';
+import { Plus, Search, Filter, MoreHorizontal, User, Calendar, X, MessageCircle, FileText, Download, Activity, Ruler, CreditCard, ChevronRight, Edit, Check, Trash2 } from 'lucide-react';
 import { api } from '../services/api-supabase';
 import { generateInvoice } from '../services/invoice';
 import { isValidEmail, isValidDNI, isValidPhone, sanitizeInput, rateLimiter } from '../utils/security';
@@ -11,10 +11,11 @@ interface ClientsProps {
   memberships: Membership[];
   onCreateClient: (data: any) => Promise<void>;
   onRenewMembership: (clientId: string, planId: string) => Promise<void>;
+  onDeleteClient: (id: string) => Promise<void>;
   primaryColor: string;
 }
 
-export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreateClient, onRenewMembership, primaryColor }) => {
+export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreateClient, onRenewMembership, onDeleteClient, primaryColor }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expired'>('active');
   const [membershipFilter, setMembershipFilter] = useState<string>('all');
@@ -75,6 +76,37 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
     onCancel: () => {} 
   });
 
+  // Custom Alert Modal State
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'success' | 'error' | 'info' | 'warning';
+  }>({ 
+    isOpen: false, 
+    title: '', 
+    message: '', 
+    type: 'info' 
+  });
+
+  // Custom Prompt Modal State
+  const [promptModal, setPromptModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    inputValue: string;
+    onConfirm: (value: string) => void;
+    onCancel: () => void;
+    options?: string[];
+  }>({ 
+    isOpen: false, 
+    title: '', 
+    message: '', 
+    inputValue: '',
+    onConfirm: () => {}, 
+    onCancel: () => {} 
+  });
+
   // Helper function to show custom confirmation
   const showConfirmation = (title: string, message: string, onConfirm: () => void, isDestructive: boolean = false) => {
     setConfirmModal({
@@ -87,6 +119,37 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
       },
       onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false })),
       isDestructive
+    });
+  };
+
+  // Helper function to show custom alert
+  const showAlert = (title: string, message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+    setAlertModal({
+      isOpen: true,
+      title,
+      message,
+      type
+    });
+  };
+
+  // Helper function to show custom prompt
+  const showPrompt = (title: string, message: string, defaultValue: string = '', options?: string[]) => {
+    return new Promise<string | null>((resolve) => {
+      setPromptModal({
+        isOpen: true,
+        title,
+        message,
+        inputValue: defaultValue,
+        onConfirm: (value: string) => {
+          setPromptModal(prev => ({ ...prev, isOpen: false }));
+          resolve(value);
+        },
+        onCancel: () => {
+          setPromptModal(prev => ({ ...prev, isOpen: false }));
+          resolve(null);
+        },
+        options
+      });
     });
   };
 
@@ -147,23 +210,23 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
 
     // Rate limiting
     if (!rateLimiter.canMakeRequest('create-client')) {
-      alert('Demasiadas solicitudes. Por favor espera un momento.');
+      showAlert('Límite de Solicitudes', 'Demasiadas solicitudes. Por favor espera un momento.', 'warning');
       return;
     }
 
     // Validaciones de seguridad
     if (!isValidDNI(formData.dni)) {
-      alert('DNI inválido. Debe tener 8 dígitos.');
+      showAlert('DNI Inválido', 'DNI inválido. Debe tener 8 dígitos.', 'error');
       return;
     }
 
     if (!isValidPhone(formData.phone)) {
-      alert('Teléfono inválido. Formato: 999999999');
+      showAlert('Teléfono Inválido', 'Teléfono inválido. Formato: 999999999', 'error');
       return;
     }
 
     if (formData.email && !isValidEmail(formData.email)) {
-      alert('Email inválido.');
+      showAlert('Email Inválido', 'Email inválido.', 'error');
       return;
     }
 
@@ -219,10 +282,10 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
       setIsModalOpen(false);
       setFormData({ firstName: '', lastName: '', dni: '', email: '', phone: '', address: '', initialMembershipId: '' });
       setInstallmentConfig({ installments: 2, interestRate: 0, isEnabled: false });
-      alert('✅ Cliente registrado exitosamente');
+      showAlert('Éxito', 'Cliente registrado exitosamente', 'success');
     } catch (error) {
       console.error('Error creating client:', error);
-      alert('❌ Ocurrió un error al guardar el cliente. Por favor intente de nuevo.');
+      showAlert('Error', 'Ocurrió un error al guardar el cliente. Por favor intente de nuevo.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -276,12 +339,12 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
 
     // Validaciones básicas
     if (!editFormData.firstName.trim() || !editFormData.lastName.trim()) {
-      alert('Nombre y apellido son obligatorios');
+      showAlert('Datos Obligatorios', 'Nombre y apellido son obligatorios', 'error');
       return;
     }
 
     if (!editFormData.phone.trim()) {
-      alert('El teléfono es obligatorio');
+      showAlert('Datos Obligatorios', 'El teléfono es obligatorio', 'error');
       return;
     }
 
@@ -304,10 +367,10 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
       onCreateClient(updatedClient);
       
       setIsEditMode(false);
-      alert('✅ Datos del cliente actualizados exitosamente');
+      showAlert('Éxito', 'Datos del cliente actualizados exitosamente', 'success');
     } catch (error) {
       console.error('Error updating client:', error);
-      alert('❌ Error al actualizar los datos del cliente');
+      showAlert('Error', 'Error al actualizar los datos del cliente', 'error');
     }
   };
 
@@ -359,20 +422,26 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
           const updatedPlans = await api.getClientInstallmentPlans(selectedClient.id);
           setClientInstallmentPlans(updatedPlans);
           
-          alert('✅ Plan de cuotas creado exitosamente');
+          showAlert('Éxito', 'Plan de cuotas creado exitosamente', 'success');
         } else {
           // Pago completo tradicional
           await onRenewMembership(selectedClient.id, planId);
-          alert('✅ Membresía asignada con éxito');
+          showAlert('Éxito', 'Membresía asignada con éxito', 'success');
         }
 
         const txs = await api.getTransactions();
         setClientHistory(txs.filter(t => t.clientId === selectedClient.id));
 
-        // Refresh selected client data
-        const allClients = await api.getClients();
-        const updated = allClients.find(c => c.id === selectedClient.id);
-        if (updated) setSelectedClient(updated);
+        // Solo obtener el cliente actualizado específico en lugar de todos
+        try {
+          const allClients = await api.getClients();
+          const updated = allClients.find(c => c.id === selectedClient.id);
+          if (updated) setSelectedClient(updated);
+        } catch (error) {
+          // Si falla, refrescar el cliente del prop
+          const updated = clients.find(c => c.id === selectedClient.id);
+          if (updated) setSelectedClient(updated);
+        }
 
         // Reset configuration
         setExpandedMembershipId(null);
@@ -380,7 +449,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
 
       } catch (error) {
         console.error('Error processing payment:', error);
-        alert('❌ Error al procesar el pago');
+        showAlert('Error', 'Error al procesar el pago', 'error');
       } finally {
         setRenewingPlanId(null);
       }
@@ -918,7 +987,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                       {selectedClient.activeMembershipId ? (
                         <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-800">
                           <div className="flex justify-between items-start">
-                            <div>
+                            <div className="flex-1">
                               <p className="font-bold text-green-900 dark:text-green-300 text-lg">
                                 {memberships.find(m => m.id === selectedClient.activeMembershipId)?.name || 'Plan Desconocido'}
                               </p>
@@ -927,8 +996,27 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                                 <span>Vence: {new Date(selectedClient.membershipExpiryDate!).toLocaleDateString()}</span>
                               </div>
                             </div>
-                            <div className="text-green-700 dark:text-green-300 bg-white dark:bg-green-900/50 border border-green-100 dark:border-green-700 px-2 py-1 rounded text-xs font-bold shadow-sm">
-                              ACTIVO
+                            <div className="flex items-center space-x-2">
+                              <div className="text-green-700 dark:text-green-300 bg-white dark:bg-green-900/50 border border-green-100 dark:border-green-700 px-2 py-1 rounded text-xs font-bold shadow-sm">
+                                ACTIVO
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  if (window.confirm('¿Eliminar la membresía activa de este cliente?')) {
+                                    try {
+                                      const updatedClient = { ...selectedClient, activeMembershipId: null, membershipStartDate: null, membershipExpiryDate: null, status: 'inactive' as const };
+                                      await api.updateClient(updatedClient);
+                                      setSelectedClient(updatedClient);
+                                    } catch (error) {
+                                      console.error('Error removing membership:', error);
+                                    }
+                                  }
+                                }}
+                                className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/20 rounded"
+                                title="Eliminar membresía"
+                              >
+                                <X size={14} />
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -1227,7 +1315,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                     </p>
                     <button
                       className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-full shadow-lg transition-transform hover:scale-105 flex items-center gap-2 mx-auto"
-                      onClick={() => alert("Función de descarga simulada. En producción esto descargaría la imagen del div.")}
+                      onClick={() => showAlert("Función de Descarga", "Función de descarga simulada. En producción esto descargaría la imagen del div.", "info")}
                     >
                       <Download size={18} /> Descargar Imagen
                     </button>
@@ -1357,7 +1445,13 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                               {payment.status === 'pending' && (
                                 <button
                                   onClick={async () => {
-                                    const method = prompt('Método de pago (cash/card/transfer/yape/plin):', 'cash');
+                                    const method = await showPrompt(
+                                      'Método de Pago',
+                                      'Selecciona el método de pago:',
+                                      'cash',
+                                      ['cash', 'card', 'transfer', 'yape', 'plin']
+                                    );
+                                    
                                     if (method && ['cash', 'card', 'transfer', 'yape', 'plin'].includes(method)) {
                                       try {
                                         const paymentResult = await api.markInstallmentAsPaid(payment.id, method as any);
@@ -1366,27 +1460,25 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                                         const updatedPayments = await api.getInstallmentPayments(selectedPlan.id);
                                         setInstallmentPayments(updatedPayments);
                                         
-                                        // Recargar cliente para actualizar estado
-                                        const allClients = await api.getClients();
-                                        const updated = allClients.find(c => c.id === selectedClient.id);
-                                        if (updated) setSelectedClient(updated);
-                                        
-                                        // Generar recibo automáticamente con información de cuotas
-                                        if (settings) {
-                                          const membership = memberships.find(m => m.id === selectedClient.activeMembershipId);
-                                          generateInvoice(
-                                            paymentResult.transaction, 
-                                            settings, 
-                                            selectedClient, 
-                                            membership,
-                                            paymentResult.installmentInfo
-                                          );
+                                        // Actualizar solo el cliente específico en lugar de recargar todos
+                                        try {
+                                          const updatedClient = clients.map(c => {
+                                            if (c.id === selectedClient.id) {
+                                              // Actualizar el estado del cliente si es necesario
+                                              return { ...c, status: 'active' as const };
+                                            }
+                                            return c;
+                                          });
+                                          const updated = updatedClient.find(c => c.id === selectedClient.id);
+                                          if (updated) setSelectedClient(updated);
+                                        } catch (error) {
+                                          console.warn('Could not update client state optimally');
                                         }
                                         
-                                        alert('✅ Pago registrado exitosamente y recibo generado');
+                                        showAlert('Éxito', 'Pago registrado exitosamente', 'success');
                                       } catch (error) {
                                         console.error('Error marking payment:', error);
-                                        alert('❌ Error al registrar el pago');
+                                        showAlert('Error', 'Error al registrar el pago', 'error');
                                       }
                                     }
                                   }}
@@ -1416,7 +1508,18 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
 
             </div>
 
-            <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex justify-end">
+            <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex justify-between">
+              <button
+                onClick={() => {
+                  if (selectedClient && window.confirm('¿Estás seguro de eliminar este cliente? Esta acción no se puede deshacer.')) {
+                    onDeleteClient(selectedClient.id);
+                    setSelectedClient(null);
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold transition-colors"
+              >
+                Eliminar Cliente
+              </button>
               <button
                 onClick={() => setSelectedClient(null)}
                 className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg font-bold"
@@ -1453,6 +1556,99 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                       ? 'bg-red-600 hover:bg-red-700' 
                       : 'bg-blue-600 hover:bg-blue-700'
                   }`}
+                >
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Alert Modal */}
+      {alertModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in-up border border-slate-200 dark:border-slate-700">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  alertModal.type === 'success' ? 'bg-green-100 text-green-600' :
+                  alertModal.type === 'error' ? 'bg-red-100 text-red-600' :
+                  alertModal.type === 'warning' ? 'bg-yellow-100 text-yellow-600' :
+                  'bg-blue-100 text-blue-600'
+                }`}>
+                  {alertModal.type === 'success' ? '✓' :
+                   alertModal.type === 'error' ? '✗' :
+                   alertModal.type === 'warning' ? '⚠' : 'ℹ'}
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  {alertModal.title}
+                </h3>
+              </div>
+              <div className="text-sm text-slate-600 dark:text-slate-300 mb-6">
+                {alertModal.message}
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setAlertModal(prev => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                >
+                  Entendido
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Prompt Modal */}
+      {promptModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md animate-fade-in-up border border-slate-200 dark:border-slate-700">
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-3">
+                {promptModal.title}
+              </h3>
+              <div className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+                {promptModal.message}
+              </div>
+              
+              {promptModal.options ? (
+                <select
+                  value={promptModal.inputValue}
+                  onChange={(e) => setPromptModal(prev => ({ ...prev, inputValue: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white mb-6"
+                >
+                  {promptModal.options.map(option => (
+                    <option key={option} value={option}>
+                      {option === 'cash' ? 'Efectivo' :
+                       option === 'card' ? 'Tarjeta' :
+                       option === 'transfer' ? 'Transferencia' :
+                       option === 'yape' ? 'Yape' :
+                       option === 'plin' ? 'Plin' : option}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={promptModal.inputValue}
+                  onChange={(e) => setPromptModal(prev => ({ ...prev, inputValue: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white mb-6"
+                  autoFocus
+                />
+              )}
+              
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={promptModal.onCancel}
+                  className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-medium transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => promptModal.onConfirm(promptModal.inputValue)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
                 >
                   Confirmar
                 </button>
