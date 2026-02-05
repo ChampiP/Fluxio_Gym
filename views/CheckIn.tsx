@@ -20,6 +20,7 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
   const [isScanning, setIsScanning] = useState(false);
   const [qrScanner, setQrScanner] = useState<QrScanner | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   
   // Recover Code State
   const [isRecoverOpen, setIsRecoverOpen] = useState(false);
@@ -38,6 +39,9 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
       if (qrScanner) {
         qrScanner.stop();
         qrScanner.destroy();
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
   }, [qrScanner]);
@@ -88,95 +92,84 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
   };
 
   // QR Scanner Functions
-  const requestCameraPermission = async () => {
-    try {
-      // Verificar si getUserMedia está disponible
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Su navegador no soporta acceso a la cámara');
-      }
-
-      // Solicitar permisos de cámara explícitamente
-      await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment' // Preferir cámara trasera en móviles
-        } 
-      });
-      
-      return true;
-    } catch (error) {
-      console.error('Error requesting camera permission:', error);
-      let errorMessage = 'Error al acceder a la cámara';
-      
-      if (error instanceof Error) {
-        if (error.name === 'NotAllowedError') {
-          errorMessage = 'Permisos de cámara denegados. Por favor, autoriza el acceso a la cámara en tu navegador.';
-        } else if (error.name === 'NotFoundError') {
-          errorMessage = 'No se encontró una cámara disponible en tu dispositivo.';
-        } else if (error.name === 'NotSupportedError') {
-          errorMessage = 'Tu navegador no soporta acceso a la cámara.';
-        } else if (error.name === 'NotReadableError') {
-          errorMessage = 'La cámara está siendo usada por otra aplicación. Ciérrala e intenta de nuevo.';
-        }
-      }
-      
-      setLastStatus({
-        success: false,
-        message: errorMessage
-      });
-      
-      setTimeout(() => {
-        setLastStatus(null);
-      }, 5000);
-      
-      return false;
-    }
-  };
-
   const startQrScanner = async () => {
     try {
-      // Primero verificar y solicitar permisos de cámara
-      const hasPermission = await requestCameraPermission();
-      if (!hasPermission) {
+      // Verificar soporte del navegador
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setLastStatus({
+          success: false,
+          message: 'Tu navegador no soporta acceso a la cámara'
+        });
+        setTimeout(() => setLastStatus(null), 4000);
         return;
       }
 
       setIsScanning(true);
       
-      if (videoRef.current) {
-        // Esperar un poco para que el modal se renderice completamente
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        const scanner = new QrScanner(
-          videoRef.current,
-          (result) => handleQrResult(result.data),
-          {
-            highlightScanRegion: true,
-            highlightCodeOutline: true,
-            preferredCamera: 'environment', // Preferir cámara trasera
-            maxScansPerSecond: 5,
-          }
-        );
-        
-        // Iniciar el scanner
-        await scanner.start();
-        console.log('QR Scanner started successfully');
-        setQrScanner(scanner);
-        
-        // Asegurarse de que el video reproduce
-        if (videoRef.current) {
-          videoRef.current.play().catch(e => console.log('Video play error:', e));
-        }
+      // Esperar a que el modal se renderice
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      if (!videoRef.current) {
+        throw new Error('Video element not found');
       }
+
+      // Solicitar acceso a la cámara y obtener el stream
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      });
+      
+      // Guardar el stream
+      streamRef.current = stream;
+      
+      // Asignar el stream al elemento video
+      videoRef.current.srcObject = stream;
+      
+      // Esperar a que el video esté listo
+      await new Promise((resolve) => {
+        if (videoRef.current) {
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current?.play().then(resolve).catch(resolve);
+          };
+        }
+      });
+      
+      // Ahora iniciar el QR Scanner
+      const scanner = new QrScanner(
+        videoRef.current,
+        (result) => handleQrResult(result.data),
+        {
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+          maxScansPerSecond: 5,
+        }
+      );
+      
+      await scanner.start();
+      console.log('QR Scanner started successfully');
+      setQrScanner(scanner);
+      
     } catch (error) {
       console.error('Error starting QR scanner:', error);
       setIsScanning(false);
       
+      // Limpiar el stream si hubo error
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      
       let errorMessage = 'Error al iniciar el escáner QR';
       if (error instanceof Error) {
-        if (error.message.includes('Permission')) {
-          errorMessage = 'Permisos de cámara requeridos. Por favor, autoriza el acceso a la cámara.';
-        } else if (error.message.includes('NotFound')) {
-          errorMessage = 'No se encontró una cámara disponible.';
+        if (error.name === 'NotAllowedError') {
+          errorMessage = 'Permisos de cámara denegados. Por favor, autoriza el acceso a la cámara.';
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = 'No se encontró una cámara disponible en tu dispositivo.';
+        } else if (error.name === 'NotReadableError') {
+          errorMessage = 'La cámara está siendo usada por otra aplicación.';
         }
       }
       
@@ -197,6 +190,18 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
       qrScanner.destroy();
       setQrScanner(null);
     }
+    
+    // Detener el stream de la cámara
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    // Limpiar el video
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    
     setIsScanning(false);
   };
 
