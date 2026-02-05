@@ -28,6 +28,9 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
   const [foundClient, setFoundClient] = useState<Client | null>(null);
 
   useEffect(() => {
+    // Configurar el worker de QR Scanner
+    QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js';
+    
     if (!isRecoverOpen) {
       inputRef.current?.focus();
     }
@@ -94,82 +97,78 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
   // QR Scanner Functions
   const startQrScanner = async () => {
     try {
-      // Verificar soporte del navegador
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setLastStatus({
-          success: false,
-          message: 'Tu navegador no soporta acceso a la cámara'
-        });
-        setTimeout(() => setLastStatus(null), 4000);
-        return;
-      }
-
+      console.log('1. Iniciando proceso de escáner QR...');
       setIsScanning(true);
       
-      // Esperar a que el modal se renderice
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Esperar a que el modal y el video se rendericen
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       if (!videoRef.current) {
+        console.error('2. Error: elemento video no encontrado');
         throw new Error('Video element not found');
       }
+      
+      console.log('2. Elemento video encontrado:', videoRef.current);
+      console.log('3. Verificando cámaras disponibles...');
+      
+      // Verificar si hay cámaras disponibles
+      const cameras = await QrScanner.listCameras(true);
+      console.log('4. Cámaras disponibles:', cameras);
+      
+      if (cameras.length === 0) {
+        throw new Error('No se encontraron cámaras disponibles');
+      }
 
-      // Solicitar acceso a la cámara y obtener el stream
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      });
+      console.log('5. Creando instancia de QR Scanner...');
       
-      // Guardar el stream
-      streamRef.current = stream;
-      
-      // Asignar el stream al elemento video
-      videoRef.current.srcObject = stream;
-      
-      // Esperar a que el video esté listo
-      await new Promise((resolve) => {
-        if (videoRef.current) {
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play().then(resolve).catch(resolve);
-          };
-        }
-      });
-      
-      // Ahora iniciar el QR Scanner
+      // Crear el scanner - QrScanner manejará el stream automáticamente
       const scanner = new QrScanner(
         videoRef.current,
-        (result) => handleQrResult(result.data),
+        (result) => {
+          console.log('✅ QR detectado:', result);
+          handleQrResult(result.data);
+        },
         {
+          returnDetailedScanResult: true,
           highlightScanRegion: true,
           highlightCodeOutline: true,
           maxScansPerSecond: 5,
+          preferredCamera: 'environment',
         }
       );
       
+      console.log('6. Iniciando scanner...');
+      
+      // Iniciar el scanner - esto pedirá permisos y abrirá la cámara automáticamente
       await scanner.start();
-      console.log('QR Scanner started successfully');
+      console.log('✅ QR Scanner iniciado exitosamente!');
+      
+      // Verificar que el video efectivamente está reproduciendo
+      if (videoRef.current.srcObject) {
+        console.log('✅ Stream de video asignado correctamente');
+      } else {
+        console.warn('⚠️ Video no tiene srcObject asignado');
+      }
+      
       setQrScanner(scanner);
       
     } catch (error) {
-      console.error('Error starting QR scanner:', error);
+      console.error('❌ Error starting QR scanner:', error);
       setIsScanning(false);
-      
-      // Limpiar el stream si hubo error
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
       
       let errorMessage = 'Error al iniciar el escáner QR';
       if (error instanceof Error) {
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        
         if (error.name === 'NotAllowedError') {
           errorMessage = 'Permisos de cámara denegados. Por favor, autoriza el acceso a la cámara.';
-        } else if (error.name === 'NotFoundError') {
+        } else if (error.name === 'NotFoundError' || error.message.includes('cámaras')) {
           errorMessage = 'No se encontró una cámara disponible en tu dispositivo.';
         } else if (error.name === 'NotReadableError') {
           errorMessage = 'La cámara está siendo usada por otra aplicación.';
+        } else if (error.name === 'OverconstrainedError') {
+          errorMessage = 'No se pudo acceder a la cámara con la configuración solicitada.';
         }
       }
       
@@ -180,7 +179,7 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
       
       setTimeout(() => {
         setLastStatus(null);
-      }, 4000);
+      }, 5000);
     }
   };
 
@@ -191,15 +190,10 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
       setQrScanner(null);
     }
     
-    // Detener el stream de la cámara
+    // Limpiar el stream de la cámara si existe
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
-    }
-    
-    // Limpiar el video
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
     }
     
     setIsScanning(false);
@@ -410,7 +404,10 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
                 autoPlay
                 playsInline
                 muted
+                width="640"
+                height="480"
                 className="w-full h-64 rounded-lg bg-black object-cover"
+                style={{ maxWidth: '100%' }}
               />
               <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none">
                 <div className="absolute top-4 left-4 w-6 h-6 border-t-4 border-l-4 border-blue-500"></div>
