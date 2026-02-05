@@ -143,6 +143,9 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
       setIsScanning(true);
       
       if (videoRef.current) {
+        // Esperar un poco para que el modal se renderice completamente
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const scanner = new QrScanner(
           videoRef.current,
           (result) => handleQrResult(result.data),
@@ -150,11 +153,19 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
             highlightScanRegion: true,
             highlightCodeOutline: true,
             preferredCamera: 'environment', // Preferir cámara trasera
+            maxScansPerSecond: 5,
           }
         );
         
+        // Iniciar el scanner
         await scanner.start();
+        console.log('QR Scanner started successfully');
         setQrScanner(scanner);
+        
+        // Asegurarse de que el video reproduce
+        if (videoRef.current) {
+          videoRef.current.play().catch(e => console.log('Video play error:', e));
+        }
       }
     } catch (error) {
       console.error('Error starting QR scanner:', error);
@@ -391,6 +402,9 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
             <div className="relative">
               <video 
                 ref={videoRef}
+                autoPlay
+                playsInline
+                muted
                 className="w-full h-64 rounded-lg bg-black object-cover"
               />
               <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none">
