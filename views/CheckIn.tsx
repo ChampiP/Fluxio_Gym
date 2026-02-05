@@ -88,8 +88,58 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
   };
 
   // QR Scanner Functions
+  const requestCameraPermission = async () => {
+    try {
+      // Verificar si getUserMedia está disponible
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Su navegador no soporta acceso a la cámara');
+      }
+
+      // Solicitar permisos de cámara explícitamente
+      await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment' // Preferir cámara trasera en móviles
+        } 
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('Error requesting camera permission:', error);
+      let errorMessage = 'Error al acceder a la cámara';
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage = 'Permisos de cámara denegados. Por favor, autoriza el acceso a la cámara en tu navegador.';
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = 'No se encontró una cámara disponible en tu dispositivo.';
+        } else if (error.name === 'NotSupportedError') {
+          errorMessage = 'Tu navegador no soporta acceso a la cámara.';
+        } else if (error.name === 'NotReadableError') {
+          errorMessage = 'La cámara está siendo usada por otra aplicación. Ciérrala e intenta de nuevo.';
+        }
+      }
+      
+      setLastStatus({
+        success: false,
+        message: errorMessage
+      });
+      
+      setTimeout(() => {
+        setLastStatus(null);
+      }, 5000);
+      
+      return false;
+    }
+  };
+
   const startQrScanner = async () => {
     try {
+      // Primero verificar y solicitar permisos de cámara
+      const hasPermission = await requestCameraPermission();
+      if (!hasPermission) {
+        return;
+      }
+
       setIsScanning(true);
       
       if (videoRef.current) {
@@ -99,6 +149,7 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
           {
             highlightScanRegion: true,
             highlightCodeOutline: true,
+            preferredCamera: 'environment', // Preferir cámara trasera
           }
         );
         
@@ -108,6 +159,24 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
     } catch (error) {
       console.error('Error starting QR scanner:', error);
       setIsScanning(false);
+      
+      let errorMessage = 'Error al iniciar el escáner QR';
+      if (error instanceof Error) {
+        if (error.message.includes('Permission')) {
+          errorMessage = 'Permisos de cámara requeridos. Por favor, autoriza el acceso a la cámara.';
+        } else if (error.message.includes('NotFound')) {
+          errorMessage = 'No se encontró una cámara disponible.';
+        }
+      }
+      
+      setLastStatus({
+        success: false,
+        message: errorMessage
+      });
+      
+      setTimeout(() => {
+        setLastStatus(null);
+      }, 4000);
     }
   };
 
