@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AttendanceLog, Client } from '../types';
-import { ArrowRight, CheckCircle, XCircle, Clock, AlertTriangle, Search, X } from 'lucide-react';
+import { ArrowRight, CheckCircle, XCircle, Clock, AlertTriangle, Search, X, QrCode, Camera } from 'lucide-react';
 import { api } from '../services/api-supabase';
+import QrScanner from 'qr-scanner';
 
 interface CheckInProps {
   onCheckIn: (id: string) => Promise<{ success: boolean; message: string; client?: any; isWarning?: boolean }>;
@@ -15,6 +16,11 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
   const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   
+  // QR Scanner State
+  const [isScanning, setIsScanning] = useState(false);
+  const [qrScanner, setQrScanner] = useState<QrScanner | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  
   // Recover Code State
   const [isRecoverOpen, setIsRecoverOpen] = useState(false);
   const [recoverDni, setRecoverDni] = useState('');
@@ -25,6 +31,16 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
       inputRef.current?.focus();
     }
   }, [lastStatus, isRecoverOpen]);
+
+  // Cleanup QR Scanner on component unmount
+  useEffect(() => {
+    return () => {
+      if (qrScanner) {
+        qrScanner.stop();
+        qrScanner.destroy();
+      }
+    };
+  }, [qrScanner]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,6 +87,75 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
     }
   };
 
+  // QR Scanner Functions
+  const startQrScanner = async () => {
+    try {
+      setIsScanning(true);
+      
+      if (videoRef.current) {
+        const scanner = new QrScanner(
+          videoRef.current,
+          (result) => handleQrResult(result.data),
+          {
+            highlightScanRegion: true,
+            highlightCodeOutline: true,
+          }
+        );
+        
+        await scanner.start();
+        setQrScanner(scanner);
+      }
+    } catch (error) {
+      console.error('Error starting QR scanner:', error);
+      setIsScanning(false);
+    }
+  };
+
+  const stopQrScanner = () => {
+    if (qrScanner) {
+      qrScanner.stop();
+      qrScanner.destroy();
+      setQrScanner(null);
+    }
+    setIsScanning(false);
+  };
+
+  const handleQrResult = async (data: string) => {
+    console.log('QR scanned:', data);
+    
+    // Check if it's our format: FLUXGYM:1005
+    if (data.startsWith('FLUXGYM:')) {
+      const clientId = data.replace('FLUXGYM:', '');
+      stopQrScanner();
+      
+      // Process check-in with the scanned ID
+      setIsLoading(true);
+      const result = await onCheckIn(clientId);
+      setLastStatus({
+        success: result.success,
+        message: result.message,
+        clientName: result.client ? `${result.client.firstName} ${result.client.lastName}` : undefined,
+        isWarning: result.isWarning
+      });
+      setIsLoading(false);
+      
+      // Clear status after 4 seconds
+      setTimeout(() => {
+        setLastStatus(null);
+      }, 4000);
+    } else {
+      // Show error for invalid QR format
+      setLastStatus({
+        success: false,
+        message: 'QR no válido. Solo códigos FLUXGYM son aceptados.',
+      });
+      
+      setTimeout(() => {
+        setLastStatus(null);
+      }, 3000);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col md:flex-row gap-8">
       {/* Input Section */}
@@ -98,10 +183,20 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
                <ArrowRight size={28} />
              </button>
           </div>
+          
+          {/* QR Scanner Button */}
+          <button 
+            type="button"
+            onClick={startQrScanner}
+            className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-colors"
+          >
+            <QrCode size={20} /> Escanear QR
+          </button>
+          
           <button 
             type="button"
             onClick={() => setIsRecoverOpen(true)}
-            className="w-full mt-4 text-sm text-slate-400 hover:text-blue-500 underline text-center"
+            className="w-full mt-3 text-sm text-slate-400 hover:text-blue-500 underline text-center"
           >
             ¿Olvidaste tu código? Recupéralo aquí
           </button>
@@ -206,6 +301,41 @@ export const CheckIn: React.FC<CheckInProps> = ({ onCheckIn, logs, primaryColor 
                  )}
               </div>
            </div>
+        </div>
+      )}
+
+      {/* QR Scanner Modal */}
+      {isScanning && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
+        >
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-200 dark:border-slate-700">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Camera size={20} /> Escanear Credencial QR
+              </h3>
+              <button onClick={stopQrScanner} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="relative">
+              <video 
+                ref={videoRef}
+                className="w-full h-64 rounded-lg bg-black object-cover"
+              />
+              <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none">
+                <div className="absolute top-4 left-4 w-6 h-6 border-t-4 border-l-4 border-blue-500"></div>
+                <div className="absolute top-4 right-4 w-6 h-6 border-t-4 border-r-4 border-blue-500"></div>
+                <div className="absolute bottom-4 left-4 w-6 h-6 border-b-4 border-l-4 border-blue-500"></div>
+                <div className="absolute bottom-4 right-4 w-6 h-6 border-b-4 border-r-4 border-blue-500"></div>
+              </div>
+            </div>
+            
+            <p className="text-sm text-slate-500 dark:text-slate-400 text-center mt-4">
+              Apunta la cámara hacia el código QR de la credencial
+            </p>
+          </div>
         </div>
       )}
     </div>

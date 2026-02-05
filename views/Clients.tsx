@@ -5,6 +5,7 @@ import { Plus, Search, Filter, MoreHorizontal, User, Calendar, X, MessageCircle,
 import { api } from '../services/api-supabase';
 import { generateInvoice } from '../services/invoice';
 import { isValidEmail, isValidDNI, isValidPhone, sanitizeInput, rateLimiter } from '../utils/security';
+import html2canvas from 'html2canvas';
 
 interface ClientsProps {
   clients: Client[];
@@ -130,6 +131,52 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
       message,
       type
     });
+  };
+
+  // Function to download credential as image
+  const downloadCredentialImage = async () => {
+    if (!selectedClient) return;
+    
+    try {
+      const credentialElement = document.getElementById('credential-card');
+      if (!credentialElement) {
+        showAlert('Error', 'No se pudo encontrar la credencial para descargar', 'error');
+        return;
+      }
+
+      // Capture the credential element as canvas
+      const canvas = await html2canvas(credentialElement, {
+        backgroundColor: null,
+        scale: 2, // Higher quality
+        useCORS: true,
+        allowTaint: true
+      });
+
+      // Convert canvas to blob
+      canvas.toBlob((blob) => {
+        if (blob) {
+          // Create filename: id:humanId_firstName+lastName.png
+          const firstName = selectedClient.firstName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const lastName = selectedClient.lastName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const filename = `id:${selectedClient.humanId}_${firstName}${lastName}.png`;
+
+          // Create download link
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+
+          showAlert('Éxito', `Credencial descargada como ${filename}`, 'success');
+        }
+      }, 'image/png');
+    } catch (error) {
+      console.error('Error downloading credential:', error);
+      showAlert('Error', 'No se pudo descargar la credencial. Inténtalo de nuevo.', 'error');
+    }
   };
 
   // Helper function to show custom prompt
@@ -1263,7 +1310,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                 <div className="flex flex-col items-center justify-center py-6">
                   <div className="max-w-sm w-full perspective-1000">
                     {/* Card Front */}
-                    <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 shadow-2xl text-white relative overflow-hidden border border-slate-700">
+                    <div id="credential-card" className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 shadow-2xl text-white relative overflow-hidden border border-slate-700">
                       {/* Decorative circles */}
                       <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10"></div>
                       <div className="absolute bottom-0 left-0 w-24 h-24 bg-white opacity-5 rounded-full -ml-10 -mb-10"></div>
@@ -1295,7 +1342,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
 
                         <div className="bg-white p-2 rounded-lg inline-block float-right">
                           <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${selectedClient.humanId}`}
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=FLUXGYM:${selectedClient.humanId}`}
                             alt="QR Code"
                             className="h-20 w-20"
                           />
@@ -1315,7 +1362,7 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                     </p>
                     <button
                       className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-full shadow-lg transition-transform hover:scale-105 flex items-center gap-2 mx-auto"
-                      onClick={() => showAlert("Función de Descarga", "Función de descarga simulada. En producción esto descargaría la imagen del div.", "info")}
+                      onClick={downloadCredentialImage}
                     >
                       <Download size={18} /> Descargar Imagen
                     </button>
