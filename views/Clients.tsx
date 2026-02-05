@@ -144,12 +144,30 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
         return;
       }
 
-      // Capture the credential element as canvas
+      // Esperar un momento para que el DOM se estabilice
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Capture the credential element as canvas with better settings
       const canvas = await html2canvas(credentialElement, {
         backgroundColor: null,
-        scale: 2, // Higher quality
+        scale: 3, // Mayor calidad
         useCORS: true,
-        allowTaint: true
+        allowTaint: true,
+        logging: false,
+        width: credentialElement.offsetWidth,
+        height: credentialElement.offsetHeight,
+        windowWidth: credentialElement.scrollWidth,
+        windowHeight: credentialElement.scrollHeight,
+        foreignObjectRendering: false, // Mejor para textos
+        onclone: (clonedDoc) => {
+          // Asegurar que el elemento clonado tenga las mismas dimensiones
+          const clonedElement = clonedDoc.getElementById('credential-card');
+          if (clonedElement) {
+            clonedElement.style.width = credentialElement.offsetWidth + 'px';
+            clonedElement.style.height = credentialElement.offsetHeight + 'px';
+            clonedElement.style.overflow = 'visible';
+          }
+        }
       });
 
       // Convert canvas to blob
@@ -1317,8 +1335,9 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
                         width: '85.60mm',
                         height: '53.98mm',
                         borderRadius: '3.18mm',
-                        padding: '4mm',
-                        border: '1px solid rgba(255,255,255,0.1)'
+                        padding: '3.2mm 3.5mm',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        boxSizing: 'border-box'
                       }}
                     >
                       {/* Patrón de fondo moderno */}
@@ -1336,65 +1355,76 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
 
                       <div className="relative z-10 h-full flex flex-col">
                         {/* Header */}
-                        <div className="flex justify-between items-start mb-2">
+                        <div className="flex justify-between items-start" style={{ marginBottom: '1mm' }}>
                           <div>
-                            <h3 className="font-black text-base tracking-wider uppercase" style={{ fontSize: '4.5mm', lineHeight: '1.2' }}>
+                            <h3 className="font-black tracking-wider uppercase" style={{ fontSize: '3.8mm', lineHeight: '1.1', marginBottom: '0.3mm' }}>
                               {settings?.gymName || 'CENTRAL GYM'}
                             </h3>
-                            <p className="text-slate-300 uppercase tracking-widest" style={{ fontSize: '2mm', fontWeight: '500' }}>
+                            <p className="text-slate-300 uppercase tracking-widest" style={{ fontSize: '1.6mm', fontWeight: '500' }}>
                               Membresía Oficial
                             </p>
                           </div>
                           {settings?.logoUrl ? (
-                            <div className="bg-white rounded-md p-1 shadow-lg" style={{ width: '11mm', height: '11mm' }}>
+                            <div className="bg-white rounded-md p-1 shadow-lg" style={{ width: '10mm', height: '10mm' }}>
                               <img src={settings.logoUrl} className="w-full h-full object-contain" alt="Logo" />
                             </div>
                           ) : (
-                            <div className="bg-white rounded-md p-1.5 shadow-lg" style={{ width: '11mm', height: '11mm' }}>
+                            <div className="bg-white rounded-md p-1.5 shadow-lg" style={{ width: '10mm', height: '10mm' }}>
                               <Activity className="text-slate-900 w-full h-full" />
                             </div>
                           )}
                         </div>
 
                         {/* Content - Distribución mejorada */}
-                        <div className="flex-1 flex items-center justify-between gap-2">
+                        <div className="flex-1 flex items-center justify-between" style={{ gap: '3mm' }}>
                           {/* Info del cliente */}
-                          <div className="flex items-center gap-2 flex-1">
+                          <div className="flex items-center flex-1 min-w-0" style={{ gap: '2.5mm' }}>
                             <div 
                               className="bg-gradient-to-br from-slate-700 to-slate-600 rounded-lg flex items-center justify-center border border-slate-500 shadow-lg flex-shrink-0"
-                              style={{ width: '16mm', height: '16mm' }}
+                              style={{ width: '13mm', height: '13mm' }}
                             >
-                              <User size={28} className="text-slate-300" />
+                              <User size={24} className="text-slate-300" />
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-slate-400 uppercase tracking-wide" style={{ fontSize: '2mm', fontWeight: '600' }}>
+                            <div className="flex-1 min-w-0" style={{ maxWidth: '38mm' }}>
+                              <p className="text-slate-400 uppercase tracking-wide" style={{ fontSize: '1.6mm', fontWeight: '600', marginBottom: '0.3mm' }}>
                                 Nombre
                               </p>
-                              <p className="font-bold truncate leading-tight" style={{ fontSize: '3.5mm' }}>
+                              <p 
+                                className="font-bold leading-tight" 
+                                style={{ 
+                                  fontSize: '3.2mm', 
+                                  lineHeight: '1.25',
+                                  maxHeight: '9mm',
+                                  wordBreak: 'break-word',
+                                  overflowWrap: 'break-word',
+                                  whiteSpace: 'normal',
+                                  overflow: 'visible'
+                                }}
+                              >
                                 {selectedClient.firstName} {selectedClient.lastName}
                               </p>
-                              <p className="text-slate-400 uppercase tracking-wide mt-1" style={{ fontSize: '2mm', fontWeight: '600' }}>
+                              <p className="text-slate-400 uppercase tracking-wide" style={{ fontSize: '1.6mm', fontWeight: '600', marginTop: '0.8mm', marginBottom: '0.2mm' }}>
                                 ID Socio
                               </p>
-                              <p className="font-mono font-black tracking-wider" style={{ fontSize: '4mm', letterSpacing: '1px' }}>
+                              <p className="font-mono font-black tracking-wider" style={{ fontSize: '3.8mm', letterSpacing: '0.5mm' }}>
                                 {selectedClient.humanId}
                               </p>
                             </div>
                           </div>
 
-                          {/* QR Code - Más grande y prominente */}
-                          <div className="bg-white rounded-lg shadow-2xl flex-shrink-0" style={{ padding: '2mm' }}>
+                          {/* QR Code */}
+                          <div className="bg-white rounded-lg shadow-2xl flex-shrink-0" style={{ padding: '1.5mm' }}>
                             <img
                               src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=FLUXGYM:${selectedClient.humanId}`}
                               alt="QR Code"
-                              style={{ width: '22mm', height: '22mm', display: 'block' }}
+                              style={{ width: '20mm', height: '20mm', display: 'block' }}
                             />
                           </div>
                         </div>
 
                         {/* Footer */}
-                        <div className="text-center border-t border-slate-700 pt-1 mt-auto">
-                          <p className="text-slate-400 uppercase tracking-widest" style={{ fontSize: '1.8mm', fontWeight: '600' }}>
+                        <div className="text-center border-t border-slate-700 mt-auto" style={{ paddingTop: '0.8mm' }}>
+                          <p className="text-slate-400 uppercase tracking-widest" style={{ fontSize: '1.6mm', fontWeight: '600' }}>
                             Presentar este código al ingreso
                           </p>
                         </div>
