@@ -1308,51 +1308,100 @@ export const Clients: React.FC<ClientsProps> = ({ clients, memberships, onCreate
               {/* --- TAB: CREDENTIAL / CARD --- */}
               {activeTab === 'card' && (
                 <div className="flex flex-col items-center justify-center py-6">
-                  <div className="max-w-sm w-full perspective-1000">
-                    {/* Card Front */}
-                    <div id="credential-card" className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 shadow-2xl text-white relative overflow-hidden border border-slate-700">
-                      {/* Decorative circles */}
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10"></div>
-                      <div className="absolute bottom-0 left-0 w-24 h-24 bg-white opacity-5 rounded-full -ml-10 -mb-10"></div>
+                  <div className="flex items-center justify-center" style={{ perspective: '1000px' }}>
+                    {/* Card Front - Dimensiones de tarjeta de crédito estándar */}
+                    <div 
+                      id="credential-card" 
+                      className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 shadow-2xl text-white relative overflow-hidden"
+                      style={{
+                        width: '85.60mm',
+                        height: '53.98mm',
+                        borderRadius: '3.18mm',
+                        padding: '4mm',
+                        border: '1px solid rgba(255,255,255,0.1)'
+                      }}
+                    >
+                      {/* Patrón de fondo moderno */}
+                      <div className="absolute inset-0 opacity-10">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full blur-3xl"></div>
+                        <div className="absolute bottom-0 left-0 w-40 h-40 bg-gradient-to-tr from-cyan-500 to-blue-600 rounded-full blur-3xl"></div>
+                      </div>
 
-                      <div className="relative z-10">
-                        <div className="flex justify-between items-start mb-6">
+                      {/* Líneas decorativas */}
+                      <div className="absolute top-0 right-0 w-1/2 h-full opacity-5">
+                        <div className="absolute top-4 right-0 w-full h-px bg-white"></div>
+                        <div className="absolute top-8 right-0 w-3/4 h-px bg-white"></div>
+                        <div className="absolute top-12 right-0 w-1/2 h-px bg-white"></div>
+                      </div>
+
+                      <div className="relative z-10 h-full flex flex-col">
+                        {/* Header */}
+                        <div className="flex justify-between items-start mb-2">
                           <div>
-                            <h3 className="font-bold text-xl tracking-wider uppercase">{settings?.gymName || 'GYM FLEX'}</h3>
-                            <p className="text-xs text-slate-400">MEMBRESÍA OFICIAL</p>
+                            <h3 className="font-black text-base tracking-wider uppercase" style={{ fontSize: '4.5mm', lineHeight: '1.2' }}>
+                              {settings?.gymName || 'CENTRAL GYM'}
+                            </h3>
+                            <p className="text-slate-300 uppercase tracking-widest" style={{ fontSize: '2mm', fontWeight: '500' }}>
+                              Membresía Oficial
+                            </p>
                           </div>
                           {settings?.logoUrl ? (
-                            <img src={settings.logoUrl} className="h-10 w-10 object-contain bg-white rounded-md p-0.5" alt="Logo" />
+                            <div className="bg-white rounded-md p-1 shadow-lg" style={{ width: '11mm', height: '11mm' }}>
+                              <img src={settings.logoUrl} className="w-full h-full object-contain" alt="Logo" />
+                            </div>
                           ) : (
-                            <Activity className="text-white opacity-80" />
+                            <div className="bg-white rounded-md p-1.5 shadow-lg" style={{ width: '11mm', height: '11mm' }}>
+                              <Activity className="text-slate-900 w-full h-full" />
+                            </div>
                           )}
                         </div>
 
-                        <div className="flex items-center gap-4 mb-6">
-                          <div className="h-20 w-20 bg-slate-700 rounded-lg flex items-center justify-center border-2 border-slate-600">
-                            <User size={40} className="text-slate-400" />
+                        {/* Content - Distribución mejorada */}
+                        <div className="flex-1 flex items-center justify-between gap-2">
+                          {/* Info del cliente */}
+                          <div className="flex items-center gap-2 flex-1">
+                            <div 
+                              className="bg-gradient-to-br from-slate-700 to-slate-600 rounded-lg flex items-center justify-center border border-slate-500 shadow-lg flex-shrink-0"
+                              style={{ width: '16mm', height: '16mm' }}
+                            >
+                              <User size={28} className="text-slate-300" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-slate-400 uppercase tracking-wide" style={{ fontSize: '2mm', fontWeight: '600' }}>
+                                Nombre
+                              </p>
+                              <p className="font-bold truncate leading-tight" style={{ fontSize: '3.5mm' }}>
+                                {selectedClient.firstName} {selectedClient.lastName}
+                              </p>
+                              <p className="text-slate-400 uppercase tracking-wide mt-1" style={{ fontSize: '2mm', fontWeight: '600' }}>
+                                ID Socio
+                              </p>
+                              <p className="font-mono font-black tracking-wider" style={{ fontSize: '4mm', letterSpacing: '1px' }}>
+                                {selectedClient.humanId}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm text-slate-400">Nombre</p>
-                            <p className="font-bold text-lg leading-tight mb-2">{selectedClient.firstName} {selectedClient.lastName}</p>
-                            <p className="text-sm text-slate-400">ID Socio</p>
-                            <p className="font-mono font-bold tracking-widest">{selectedClient.humanId}</p>
+
+                          {/* QR Code - Más grande y prominente */}
+                          <div className="bg-white rounded-lg shadow-2xl flex-shrink-0" style={{ padding: '2mm' }}>
+                            <img
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=FLUXGYM:${selectedClient.humanId}`}
+                              alt="QR Code"
+                              style={{ width: '22mm', height: '22mm', display: 'block' }}
+                            />
                           </div>
                         </div>
 
-                        <div className="bg-white p-2 rounded-lg inline-block float-right">
-                          <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=FLUXGYM:${selectedClient.humanId}`}
-                            alt="QR Code"
-                            className="h-20 w-20"
-                          />
-                        </div>
-                        <div className="clear-both"></div>
-
-                        <div className="mt-2 text-center text-[10px] text-slate-500 uppercase tracking-widest">
-                          Presentar este código al ingreso
+                        {/* Footer */}
+                        <div className="text-center border-t border-slate-700 pt-1 mt-auto">
+                          <p className="text-slate-400 uppercase tracking-widest" style={{ fontSize: '1.8mm', fontWeight: '600' }}>
+                            Presentar este código al ingreso
+                          </p>
                         </div>
                       </div>
+
+                      {/* Efecto holográfico sutil */}
+                      <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white to-transparent opacity-5 pointer-events-none"></div>
                     </div>
                   </div>
 
